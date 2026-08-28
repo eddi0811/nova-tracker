@@ -219,6 +219,10 @@
   .type-opt{ flex: 1; border: 1px solid var(--line-strong); border-radius: 8px; padding: 12px 10px; text-align: center; font-size: 12.5px; cursor: pointer; color: var(--ink-soft); }
   .type-opt.selected{ border-color: var(--blue-deep); color: var(--blue-deep); background: var(--blue-pale); font-weight: 500; }
   .modal-actions{ display: flex; justify-content: flex-end; gap: 8px; margin-top: 6px; }
+  .material-row-form{ border: 1px solid var(--line-strong); border-radius: 8px; padding: 12px 14px 4px; margin-bottom: 10px; position: relative; background: var(--panel-soft); }
+  .material-row-form .form-row{ margin-bottom: 8px; }
+  .material-row-del{ position: absolute; top: 8px; right: 10px; background: none; border: none; color: var(--ink-faint); cursor: pointer; font-size: 13px; }
+  .material-row-del:hover{ color: var(--dust); }
 
   .footnote{ margin-top: 28px; font-size: 11.5px; color: var(--ink-faint); text-align: center; font-weight: 300; }
 </style>
@@ -334,9 +338,9 @@
 
   <div class="modal-overlay" id="modal-new-project">
     <div class="modal">
-      <h3>新增專案</h3>
+      <h3 id="project-modal-title">新增專案</h3>
       <div class="form-row"><label>專案名稱</label><input id="np-name" type="text" placeholder="例如:官網 Q4 改版"></div>
-      <div class="form-row">
+      <div class="form-row" id="project-type-choice">
         <label>追蹤方式</label>
         <div class="type-choice">
           <div class="type-opt selected" id="np-type-task" onclick="selectProjType('task')">任務追蹤<br>(起訖時間)</div>
@@ -406,12 +410,12 @@
     <div class="modal">
       <h3 id="material-modal-title">新增物料</h3>
       <div class="form-row"><label>產品名稱</label><input id="nm-product" type="text"></div>
-      <div class="form-row"><label>供料廠商</label><input id="nm-vendor" type="text"></div>
-      <div class="form-row"><label>料號</label><input id="nm-partno" type="text"></div>
-      <div class="form-row"><label>品名</label><input id="nm-itemname" type="text"></div>
-      <div class="form-row"><label>數量</label><input id="nm-qty" type="text"></div>
-      <div class="form-row"><label>訂貨日期</label><input id="nm-orderdate" type="date"></div>
       <div class="form-row"><label>關聯專案</label><select id="nm-project"></select></div>
+      <div class="form-row">
+        <label>供應商資訊(可新增多筆)</label>
+        <div id="material-rows"></div>
+        <button type="button" class="add-meeting-toggle" id="material-add-row-btn" onclick="addMaterialRow()">+ 新增供應商</button>
+      </div>
       <div class="modal-actions">
         <button class="ghost-btn" onclick="closeModal('modal-new-material')">取消</button>
         <button class="primary-btn" onclick="saveMaterial()">儲存</button>
@@ -476,6 +480,7 @@
   let editingMeeting = null;
   let editingMaterialId = null;
   let editingPaymentId = null;
+  let editingProjectId = null;
 
   let projects = [];
   let payments = [];
@@ -534,7 +539,13 @@
     }
     grid.innerHTML = projects.map(p => `
       <div class="project-card" onclick="openProject('${p.id}')">
-        <span class="type-badge ${p.type}">${p.type === 'task' ? '任務追蹤' : '版本追蹤'}</span>
+        <div style="display:flex;justify-content:space-between;align-items:flex-start;">
+          <span class="type-badge ${p.type}">${p.type === 'task' ? '任務追蹤' : '版本追蹤'}</span>
+          <div style="display:flex;gap:8px;">
+            <button class="row-edit" onclick="event.stopPropagation(); openEditProjectModal('${p.id}')" title="編輯專案名稱">✎</button>
+            <button class="row-del" onclick="event.stopPropagation(); deleteProject('${p.id}')" title="刪除專案">✕</button>
+          </div>
+        </div>
         <div class="project-name">${escapeHTML(p.name)}</div>
         <div class="project-meta">${(p.items||[]).length} 個${p.type === 'task' ? '任務' : '版本'} · 建立於 ${p.createdAt}</div>
       </div>
@@ -547,8 +558,19 @@
   }
 
   function openNewProjectModal(){
+    editingProjectId = null;
     document.getElementById('np-name').value = '';
     selectProjType('task');
+    document.getElementById('project-modal-title').textContent = '新增專案';
+    document.getElementById('project-type-choice').style.display = 'block';
+    document.getElementById('modal-new-project').classList.add('open');
+  }
+  function openEditProjectModal(id){
+    editingProjectId = id;
+    const p = projects.find(x => x.id === id);
+    document.getElementById('np-name').value = p.name;
+    document.getElementById('project-modal-title').textContent = '編輯專案名稱';
+    document.getElementById('project-type-choice').style.display = 'none';
     document.getElementById('modal-new-project').classList.add('open');
   }
   function selectProjType(t){
@@ -559,12 +581,18 @@
   function createProject(){
     const name = document.getElementById('np-name').value.trim();
     if(!name){ alert('請輸入專案名稱'); return; }
-    db.collection('projects').add({
-      name, type: newProjType, createdAt: new Date().toISOString().slice(0,10), items: []
-    }).then(ref => {
-      closeModal('modal-new-project');
-      openProject(ref.id);
-    }).catch(err => alert('建立失敗:' + err.message));
+    if(editingProjectId){
+      db.collection('projects').doc(editingProjectId).update({ name })
+        .then(() => { closeModal('modal-new-project'); editingProjectId = null; }).catch(err => alert('儲存失敗:' + err.message));
+    } else {
+      db.collection('projects').add({
+        name, type: newProjType, createdAt: new Date().toISOString().slice(0,10), items: []
+      }).then(ref => { closeModal('modal-new-project'); openProject(ref.id); }).catch(err => alert('建立失敗:' + err.message));
+    }
+  }
+  function deleteProject(id){
+    if(!confirm('確定要刪除整個專案嗎?底下所有任務/版本、會議紀錄、照片都會一併刪除,且無法復原。')) return;
+    db.collection('projects').doc(id).delete().catch(err => alert('刪除失敗:' + err.message));
   }
 
   // ---------- project detail ----------
@@ -1124,32 +1152,70 @@
     editingMaterialId = materialId || null;
     const m = materialId ? materials.find(x => x.id === materialId) : null;
     document.getElementById('nm-product').value = m ? m.productName : '';
-    document.getElementById('nm-vendor').value = m ? m.vendor : '';
-    document.getElementById('nm-partno').value = m ? m.partNo : '';
-    document.getElementById('nm-itemname').value = m ? m.itemName : '';
-    document.getElementById('nm-qty').value = m ? m.quantity : '';
-    document.getElementById('nm-orderdate').value = m ? m.orderDate : '';
     populateProjectSelect('nm-project', false);
     if(m) document.getElementById('nm-project').value = m.projectId || '';
+    document.getElementById('material-rows').innerHTML = '';
+    if(m){
+      addMaterialRow({ vendor: m.vendor, partNo: m.partNo, itemName: m.itemName, quantity: m.quantity, orderDate: m.orderDate });
+      document.getElementById('material-add-row-btn').style.display = 'none';
+    } else {
+      addMaterialRow();
+      document.getElementById('material-add-row-btn').style.display = 'block';
+    }
     document.getElementById('material-modal-title').textContent = m ? '編輯物料' : '新增物料';
     document.getElementById('modal-new-material').classList.add('open');
+  }
+  function addMaterialRow(prefill){
+    const p = prefill || {};
+    const container = document.getElementById('material-rows');
+    const row = document.createElement('div');
+    row.className = 'material-row-form';
+    row.innerHTML = `
+      <button type="button" class="material-row-del" onclick="this.parentElement.remove()">✕</button>
+      <div class="form-row"><label>供料廠商</label><input type="text" class="mr-vendor" value="${escapeAttr(p.vendor || '')}"></div>
+      <div class="form-row"><label>料號</label><input type="text" class="mr-partno" value="${escapeAttr(p.partNo || '')}"></div>
+      <div class="form-row"><label>品名</label><input type="text" class="mr-itemname" value="${escapeAttr(p.itemName || '')}"></div>
+      <div class="form-row"><label>數量</label><input type="text" class="mr-qty" value="${escapeAttr(p.quantity || '')}"></div>
+      <div class="form-row"><label>訂貨日期</label><input type="date" class="mr-orderdate" value="${p.orderDate || ''}"></div>
+    `;
+    container.appendChild(row);
   }
   function saveMaterial(){
     const productName = document.getElementById('nm-product').value.trim();
     if(!productName){ alert('請輸入產品名稱'); return; }
-    const data = {
-      productName,
-      vendor: document.getElementById('nm-vendor').value.trim(),
-      partNo: document.getElementById('nm-partno').value.trim(),
-      itemName: document.getElementById('nm-itemname').value.trim(),
-      quantity: document.getElementById('nm-qty').value.trim(),
-      orderDate: document.getElementById('nm-orderdate').value,
-      projectId: document.getElementById('nm-project').value || ''
-    };
-    const req = editingMaterialId
-      ? db.collection('materials').doc(editingMaterialId).update(data)
-      : db.collection('materials').add(data);
-    req.then(() => { closeModal('modal-new-material'); editingMaterialId = null; }).catch(err => alert('儲存失敗:' + err.message));
+    const projectId = document.getElementById('nm-project').value || '';
+    const rows = document.querySelectorAll('#material-rows .material-row-form');
+    if(rows.length === 0){ alert('請至少新增一筆供應商資訊'); return; }
+
+    if(editingMaterialId){
+      const row = rows[0];
+      const data = {
+        productName, projectId,
+        vendor: row.querySelector('.mr-vendor').value.trim(),
+        partNo: row.querySelector('.mr-partno').value.trim(),
+        itemName: row.querySelector('.mr-itemname').value.trim(),
+        quantity: row.querySelector('.mr-qty').value.trim(),
+        orderDate: row.querySelector('.mr-orderdate').value
+      };
+      db.collection('materials').doc(editingMaterialId).update(data)
+        .then(() => { closeModal('modal-new-material'); editingMaterialId = null; }).catch(err => alert('儲存失敗:' + err.message));
+    } else {
+      const batch = db.batch();
+      let count = 0;
+      rows.forEach(row => {
+        const vendor = row.querySelector('.mr-vendor').value.trim();
+        const partNo = row.querySelector('.mr-partno').value.trim();
+        const itemName = row.querySelector('.mr-itemname').value.trim();
+        const quantity = row.querySelector('.mr-qty').value.trim();
+        const orderDate = row.querySelector('.mr-orderdate').value;
+        if(!vendor && !partNo && !itemName) return;
+        const ref = db.collection('materials').doc();
+        batch.set(ref, { productName, projectId, vendor, partNo, itemName, quantity, orderDate });
+        count++;
+      });
+      if(count === 0){ alert('請至少填寫一筆供應商資訊'); return; }
+      batch.commit().then(() => closeModal('modal-new-material')).catch(err => alert('新增失敗:' + err.message));
+    }
   }
   function deleteMaterial(id){
     if(!confirm('確定要刪除這筆物料嗎?')) return;
