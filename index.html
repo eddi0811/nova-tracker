@@ -129,6 +129,10 @@
   .meeting-sub .val{ font-size: 12px; color: var(--ink-soft); margin-top: 2px; }
   .meeting-del{ position: absolute; top: 10px; right: 10px; background: none; border: none; color: var(--ink-faint); font-size: 13px; cursor: pointer; }
   .meeting-del:hover{ color: var(--dust); }
+  .meeting-edit{ position: absolute; top: 10px; right: 34px; background: none; border: none; color: var(--ink-faint); font-size: 12px; cursor: pointer; }
+  .meeting-edit:hover{ color: var(--blue-deep); }
+  .row-edit{ background: none; border: none; color: var(--ink-faint); cursor: pointer; font-size: 13px; }
+  .row-edit:hover{ color: var(--blue-deep); }
   .empty-note{ font-size: 12px; color: var(--ink-faint); padding: 6px 2px 14px; }
 
   .todo-list{ display: flex; flex-direction: column; gap: 6px; margin-top: 10px; }
@@ -295,7 +299,7 @@
           <div class="detail-actions">
             <button class="ghost-btn" onclick="exportMaterialsWord()">匯出 Word</button>
             <button class="ghost-btn" onclick="exportMaterialsPDF()">匯出 PDF</button>
-            <button class="primary-btn" onclick="openNewMaterialModal()">+ 新增物料</button>
+            <button class="primary-btn" onclick="openMaterialModal()">+ 新增物料</button>
           </div>
         </div>
         <div class="filters-row"><select id="mf-project" onchange="renderMaterials()"></select></div>
@@ -305,7 +309,7 @@
       <div id="view-payments">
         <div class="view-head">
           <div class="view-title">對帳區</div>
-          <button class="primary-btn" onclick="openNewPaymentModal()">+ 新增待付款項目</button>
+          <button class="primary-btn" onclick="openPaymentModal()">+ 新增待付款項目</button>
         </div>
         <div class="stat-row" id="payment-stats"></div>
         <div class="filters-row">
@@ -384,7 +388,7 @@
 
   <div class="modal-overlay" id="modal-new-payment">
     <div class="modal">
-      <h3>新增待付款項目</h3>
+      <h3 id="payment-modal-title">新增待付款項目</h3>
       <div class="form-row"><label>項目名稱</label><input id="np2-name" type="text"></div>
       <div class="form-row"><label>金額</label><input id="np2-amount" type="number"></div>
       <div class="form-row"><label>付款對象</label><input id="np2-payee" type="text"></div>
@@ -393,14 +397,14 @@
       <div class="form-row"><label>備註</label><textarea id="np2-note" rows="2"></textarea></div>
       <div class="modal-actions">
         <button class="ghost-btn" onclick="closeModal('modal-new-payment')">取消</button>
-        <button class="primary-btn" onclick="createPayment()">新增</button>
+        <button class="primary-btn" onclick="savePayment()">儲存</button>
       </div>
     </div>
   </div>
 
   <div class="modal-overlay" id="modal-new-material">
     <div class="modal">
-      <h3>新增物料</h3>
+      <h3 id="material-modal-title">新增物料</h3>
       <div class="form-row"><label>產品名稱</label><input id="nm-product" type="text"></div>
       <div class="form-row"><label>供料廠商</label><input id="nm-vendor" type="text"></div>
       <div class="form-row"><label>料號</label><input id="nm-partno" type="text"></div>
@@ -410,7 +414,7 @@
       <div class="form-row"><label>關聯專案</label><select id="nm-project"></select></div>
       <div class="modal-actions">
         <button class="ghost-btn" onclick="closeModal('modal-new-material')">取消</button>
-        <button class="primary-btn" onclick="createMaterial()">新增</button>
+        <button class="primary-btn" onclick="saveMaterial()">儲存</button>
       </div>
     </div>
   </div>
@@ -469,6 +473,9 @@
   let confirmTargetItemId = null;
   let newConfirmType = 'task';
   let newProjType = 'task';
+  let editingMeeting = null;
+  let editingMaterialId = null;
+  let editingPaymentId = null;
 
   let projects = [];
   let payments = [];
@@ -735,6 +742,7 @@
     const photosHTML = m.photos && m.photos.length ? photoGridHTML(m.photos, 'meeting', itemId, m.id) : '';
     return `
       <div class="meeting-card">
+        <button class="meeting-edit" onclick="editMeeting('${itemId}','${m.id}')" title="編輯">✎</button>
         <button class="meeting-del" onclick="deleteMeeting('${itemId}','${m.id}')" title="刪除">✕</button>
         <div class="meeting-date">${m.date}</div>
         <div class="meeting-content">${escapeHTML(m.content) || '（未填寫內容）'}</div>
@@ -750,9 +758,69 @@
     document.getElementById('row-' + id).classList.toggle('open');
   }
   function toggleMeetingForm(id){
-    if(openForms.has(id)) openForms.delete(id); else { openForms.add(id); openItems.add(id); }
-    document.getElementById('form-' + id).classList.toggle('open');
-    document.getElementById('row-' + id).classList.add('open');
+    const isOpen = openForms.has(id);
+    if(isOpen){
+      openForms.delete(id);
+      editingMeeting = null;
+      document.getElementById('form-' + id).classList.remove('open');
+    } else {
+      editingMeeting = null;
+      openForms.add(id); openItems.add(id);
+      document.getElementById('row-' + id).classList.add('open');
+      document.getElementById('form-' + id).classList.add('open');
+      document.getElementById('mf-date-' + id).value = new Date().toISOString().slice(0,10);
+      document.getElementById('mf-content-' + id).value = '';
+      document.getElementById('mf-attendees-' + id).value = '';
+      document.getElementById('todo-rows-' + id).innerHTML = '';
+      document.getElementById('form-photo-grid-' + id).innerHTML = '';
+      const saveBtn = document.querySelector('#form-' + id + ' .form-actions .primary-btn');
+      if(saveBtn) saveBtn.textContent = '儲存紀錄';
+    }
+  }
+
+  function editMeeting(itemId, meetingId){
+    const p = getCurrentProject();
+    const item = p.items.find(i => i.id === itemId);
+    const m = item.meetings.find(mm => mm.id === meetingId);
+    editingMeeting = { itemId, meetingId };
+    openItems.add(itemId);
+    openForms.add(itemId);
+    renderDetail();
+    document.getElementById('row-' + itemId).classList.add('open');
+    document.getElementById('form-' + itemId).classList.add('open');
+    document.getElementById('mf-date-' + itemId).value = m.date;
+    document.getElementById('mf-content-' + itemId).value = m.content;
+    document.getElementById('mf-attendees-' + itemId).value = m.attendees;
+
+    const todoContainer = document.getElementById('todo-rows-' + itemId);
+    todoContainer.innerHTML = '';
+    (m.todos || []).forEach(t => {
+      const row = document.createElement('div');
+      row.className = 'todo-row';
+      row.dataset.todoId = t.id;
+      row.dataset.done = t.done ? '1' : '0';
+      row.innerHTML = `
+        <input type="text" class="tr-text" placeholder="待辦事項" value="${escapeAttr(t.text)}">
+        <input type="text" class="tr-owner" placeholder="負責人" value="${escapeAttr(t.owner)}">
+        <input type="date" class="tr-due" value="${t.due || ''}">
+        <button type="button" class="todo-row-del" onclick="this.parentElement.remove()">✕</button>
+      `;
+      todoContainer.appendChild(row);
+    });
+
+    const photoGrid = document.getElementById('form-photo-grid-' + itemId);
+    photoGrid.innerHTML = '';
+    (m.photos || []).forEach(ph => {
+      const thumb = document.createElement('div');
+      thumb.className = 'photo-thumb';
+      thumb.dataset.fileId = ph.id;
+      thumb.dataset.url = ph.url;
+      thumb.innerHTML = `<img src="${ph.url}" onclick="openLightbox(this.src)"><button type="button" class="del-btn" onclick="event.stopPropagation(); this.parentElement.remove()">✕</button>`;
+      photoGrid.appendChild(thumb);
+    });
+
+    const saveBtn = document.querySelector('#form-' + itemId + ' .form-actions .primary-btn');
+    if(saveBtn) saveBtn.textContent = '更新紀錄';
   }
   function deleteItem(id){
     if(!confirm('確定要刪除這個項目嗎?會一併刪除底下的會議紀錄、照片與確認事項。')) return;
@@ -894,7 +962,9 @@
     document.querySelectorAll('#todo-rows-' + itemId + ' .todo-row').forEach(row => {
       const text = row.querySelector('.tr-text').value.trim();
       if(!text) return;
-      todos.push({ id: uid(), text, owner: row.querySelector('.tr-owner').value.trim(), due: row.querySelector('.tr-due').value, done: false });
+      const existingId = row.dataset.todoId;
+      const existingDone = row.dataset.done === '1';
+      todos.push({ id: existingId || uid(), text, owner: row.querySelector('.tr-owner').value.trim(), due: row.querySelector('.tr-due').value, done: existingId ? existingDone : false });
     });
 
     const photos = [];
@@ -902,8 +972,14 @@
       if(thumb.dataset.fileId) photos.push({ id: thumb.dataset.fileId, url: thumb.dataset.url });
     });
 
-    if(!item.meetings) item.meetings = [];
-    item.meetings.push({ id: uid(), date, content, attendees, todos, photos });
+    if(editingMeeting && editingMeeting.itemId === itemId){
+      const idx = item.meetings.findIndex(m => m.id === editingMeeting.meetingId);
+      if(idx > -1) item.meetings[idx] = { id: editingMeeting.meetingId, date, content, attendees, todos, photos };
+      editingMeeting = null;
+    } else {
+      if(!item.meetings) item.meetings = [];
+      item.meetings.push({ id: uid(), date, content, attendees, todos, photos });
+    }
     openForms.delete(itemId);
     openItems.add(itemId);
     renderDetail();
@@ -1038,20 +1114,30 @@
           <div class="material-field"><div class="lbl">數量</div><div class="val">${escapeHTML(m.quantity) || '—'}</div></div>
           <div class="material-field"><div class="lbl">訂貨日期</div><div class="val">${m.orderDate || '—'}</div></div>
           <div class="material-field"><div class="lbl">關聯專案</div><div class="val">${proj ? escapeHTML(proj.name) : '未指定'}</div></div>
-          <button class="row-del" style="margin-left:auto;" onclick="deleteMaterial('${m.id}')">✕</button>
+          <button class="row-edit" style="margin-left:auto;" onclick="openMaterialModal('${m.id}')" title="編輯">✎</button>
+          <button class="row-del" onclick="deleteMaterial('${m.id}')">✕</button>
         </div>
       `; }).join('')}
     `).join('');
   }
-  function openNewMaterialModal(){
-    ['nm-product','nm-vendor','nm-partno','nm-itemname','nm-qty','nm-orderdate'].forEach(id => document.getElementById(id).value = '');
+  function openMaterialModal(materialId){
+    editingMaterialId = materialId || null;
+    const m = materialId ? materials.find(x => x.id === materialId) : null;
+    document.getElementById('nm-product').value = m ? m.productName : '';
+    document.getElementById('nm-vendor').value = m ? m.vendor : '';
+    document.getElementById('nm-partno').value = m ? m.partNo : '';
+    document.getElementById('nm-itemname').value = m ? m.itemName : '';
+    document.getElementById('nm-qty').value = m ? m.quantity : '';
+    document.getElementById('nm-orderdate').value = m ? m.orderDate : '';
     populateProjectSelect('nm-project', false);
+    if(m) document.getElementById('nm-project').value = m.projectId || '';
+    document.getElementById('material-modal-title').textContent = m ? '編輯物料' : '新增物料';
     document.getElementById('modal-new-material').classList.add('open');
   }
-  function createMaterial(){
+  function saveMaterial(){
     const productName = document.getElementById('nm-product').value.trim();
     if(!productName){ alert('請輸入產品名稱'); return; }
-    db.collection('materials').add({
+    const data = {
       productName,
       vendor: document.getElementById('nm-vendor').value.trim(),
       partNo: document.getElementById('nm-partno').value.trim(),
@@ -1059,7 +1145,11 @@
       quantity: document.getElementById('nm-qty').value.trim(),
       orderDate: document.getElementById('nm-orderdate').value,
       projectId: document.getElementById('nm-project').value || ''
-    }).then(() => closeModal('modal-new-material')).catch(err => alert('新增失敗:' + err.message));
+    };
+    const req = editingMaterialId
+      ? db.collection('materials').doc(editingMaterialId).update(data)
+      : db.collection('materials').add(data);
+    req.then(() => { closeModal('modal-new-material'); editingMaterialId = null; }).catch(err => alert('儲存失敗:' + err.message));
   }
   function deleteMaterial(id){
     if(!confirm('確定要刪除這筆物料嗎?')) return;
@@ -1154,28 +1244,44 @@
               <input type="date" id="pay-date-${pay.id}" value="${today}">
               <button class="ghost-btn" onclick="markPaid('${pay.id}')">確認已付款</button>
             </div>` : ''}
+          <button class="row-edit" onclick="openPaymentModal('${pay.id}')" title="編輯">✎</button>
           <button class="row-del" onclick="deletePayment('${pay.id}')">✕</button>
         </div>
       `;
     }).join('');
   }
-  function openNewPaymentModal(){
-    ['np2-name','np2-amount','np2-payee','np2-due','np2-note'].forEach(id => document.getElementById(id).value = '');
+  function openPaymentModal(paymentId){
+    editingPaymentId = paymentId || null;
+    const pay = paymentId ? payments.find(x => x.id === paymentId) : null;
+    document.getElementById('np2-name').value = pay ? pay.item : '';
+    document.getElementById('np2-amount').value = pay ? pay.amount : '';
+    document.getElementById('np2-payee').value = pay ? pay.payee : '';
+    document.getElementById('np2-due').value = pay ? pay.dueDate : '';
+    document.getElementById('np2-note').value = pay ? pay.note : '';
     populateProjectSelect('np2-project', false);
+    if(pay) document.getElementById('np2-project').value = pay.projectId || '';
+    document.getElementById('payment-modal-title').textContent = pay ? '編輯待付款項目' : '新增待付款項目';
     document.getElementById('modal-new-payment').classList.add('open');
   }
-  function createPayment(){
+  function savePayment(){
     const item = document.getElementById('np2-name').value.trim();
     const amount = document.getElementById('np2-amount').value;
     if(!item || !amount){ alert('請至少填寫項目名稱與金額'); return; }
-    db.collection('payments').add({
+    const data = {
       item, amount: Number(amount),
       payee: document.getElementById('np2-payee').value.trim(),
       dueDate: document.getElementById('np2-due').value,
       projectId: document.getElementById('np2-project').value || '',
-      status: 'unpaid', paidDate: '',
       note: document.getElementById('np2-note').value.trim()
-    }).then(() => closeModal('modal-new-payment')).catch(err => alert('新增失敗:' + err.message));
+    };
+    if(editingPaymentId){
+      db.collection('payments').doc(editingPaymentId).update(data)
+        .then(() => { closeModal('modal-new-payment'); editingPaymentId = null; }).catch(err => alert('儲存失敗:' + err.message));
+    } else {
+      data.status = 'unpaid'; data.paidDate = '';
+      db.collection('payments').add(data)
+        .then(() => closeModal('modal-new-payment')).catch(err => alert('新增失敗:' + err.message));
+    }
   }
   function markPaid(id){
     const dateVal = document.getElementById('pay-date-' + id).value;
@@ -1189,6 +1295,7 @@
 
   // ---------- utils ----------
   function escapeHTML(s){ return (s || '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
+  function escapeAttr(s){ return (s || '').replace(/"/g, '&quot;'); }
 
   // ---------- project report export ----------
   function buildReportHTML(){
