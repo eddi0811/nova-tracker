@@ -178,7 +178,17 @@
   #view-payments{ display: none; }
   .filters-row{ display: flex; gap: 10px; margin-bottom: 16px; flex-wrap: wrap; }
   .filters-row select{ border: 1px solid var(--line-strong); background: var(--panel); color: var(--ink); font-size: 12.5px; padding: 9px 12px; border-radius: 8px; }
-  .payment-card, .material-card{ background: var(--panel); border-radius: var(--radius); padding: 16px 20px; margin-bottom: 10px; display: flex; align-items: center; gap: 16px; flex-wrap: wrap; }
+  .payment-card, .material-card{ background: var(--panel); border-radius: var(--radius); padding: 16px 20px; margin-bottom: 10px; }
+  .material-card{ display: flex; align-items: center; gap: 16px; flex-wrap: wrap; }
+  .payment-row{ display: flex; align-items: center; gap: 16px; flex-wrap: wrap; }
+  .attachment-row{ display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin-top: 12px; padding-top: 12px; border-top: 1px solid var(--line); }
+  .attachment-chip{ display: inline-flex; align-items: center; gap: 6px; background: var(--panel-soft); border-radius: 999px; padding: 5px 6px 5px 12px; font-size: 11.5px; color: var(--ink-soft); }
+  .attachment-chip a{ color: var(--blue-deep); text-decoration: none; max-width: 160px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .attachment-chip a:hover{ text-decoration: underline; }
+  .attachment-chip .del-btn{ background: none; border: none; color: var(--ink-faint); cursor: pointer; font-size: 11px; padding: 2px 4px; }
+  .attachment-chip .del-btn:hover{ color: var(--dust); }
+  .attachment-upload-btn{ font-size: 11.5px; color: var(--blue-deep); border: 1px dashed var(--line-strong); padding: 5px 11px; border-radius: 999px; cursor: pointer; }
+  .attachment-upload-btn:hover{ border-color: var(--blue); }
   .payment-main{ flex: 1; min-width: 180px; }
   .payment-name{ font-size: 14px; font-weight: 500; }
   .payment-sub{ font-size: 11.5px; color: var(--ink-soft); margin-top: 4px; }
@@ -911,7 +921,7 @@
       headers: { Authorization: 'Bearer ' + driveAccessToken, 'Content-Type': 'application/json' },
       body: JSON.stringify({ role: 'reader', type: 'anyone' })
     });
-    return { id: data.id, url: `https://drive.google.com/thumbnail?id=${data.id}&sz=w1000` };
+    return { id: data.id, url: `https://drive.google.com/thumbnail?id=${data.id}&sz=w1000`, viewUrl: `https://drive.google.com/file/d/${data.id}/view` };
   }
 
   async function handleMeetingPhotoSelect(itemId, event){
@@ -1309,28 +1319,60 @@
     list.innerHTML = filtered.map(pay => {
       const proj = projects.find(p => p.id === pay.projectId);
       const overdue = pay.status === 'unpaid' && pay.dueDate && pay.dueDate < today;
+      const attachments = pay.attachments || [];
       return `
         <div class="payment-card">
-          <div class="payment-main">
-            <div class="payment-name">${escapeHTML(pay.item)}</div>
-            <div class="payment-sub">
-              付款對象:${escapeHTML(pay.payee) || '—'} ・ 到期日:${pay.dueDate || '—'}${overdue ? '(已逾期)' : ''}
-              ${proj ? ` ・ ${escapeHTML(proj.name)}` : ' ・ 未指定專案'}
-              ${pay.status === 'paid' ? ` ・ 已付款日期:${pay.paidDate}` : ''}
+          <div class="payment-row">
+            <div class="payment-main">
+              <div class="payment-name">${escapeHTML(pay.item)}</div>
+              <div class="payment-sub">
+                付款對象:${escapeHTML(pay.payee) || '—'} ・ 到期日:${pay.dueDate || '—'}${overdue ? '(已逾期)' : ''}
+                ${proj ? ` ・ ${escapeHTML(proj.name)}` : ' ・ 未指定專案'}
+                ${pay.status === 'paid' ? ` ・ 已付款日期:${pay.paidDate}` : ''}
+              </div>
             </div>
+            <div class="payment-amount">NT$ ${Number(pay.amount || 0).toLocaleString()}</div>
+            <span class="status-badge ${pay.status}">${pay.status === 'paid' ? '已付款' : '未付款'}</span>
+            ${pay.status === 'unpaid' ? `
+              <div class="pay-action">
+                <input type="date" id="pay-date-${pay.id}" value="${today}">
+                <button class="ghost-btn" onclick="markPaid('${pay.id}')">確認已付款</button>
+              </div>` : ''}
+            <button class="row-edit" onclick="openPaymentModal('${pay.id}')" title="編輯">✎</button>
+            <button class="row-del" onclick="deletePayment('${pay.id}')">✕</button>
           </div>
-          <div class="payment-amount">NT$ ${Number(pay.amount || 0).toLocaleString()}</div>
-          <span class="status-badge ${pay.status}">${pay.status === 'paid' ? '已付款' : '未付款'}</span>
-          ${pay.status === 'unpaid' ? `
-            <div class="pay-action">
-              <input type="date" id="pay-date-${pay.id}" value="${today}">
-              <button class="ghost-btn" onclick="markPaid('${pay.id}')">確認已付款</button>
-            </div>` : ''}
-          <button class="row-edit" onclick="openPaymentModal('${pay.id}')" title="編輯">✎</button>
-          <button class="row-del" onclick="deletePayment('${pay.id}')">✕</button>
+          <div class="attachment-row">
+            ${attachments.map((a, idx) => `
+              <span class="attachment-chip">
+                <a href="${a.url}" target="_blank" rel="noopener">${escapeHTML(a.name)}</a>
+                <button class="del-btn" onclick="deletePaymentAttachment('${pay.id}', ${idx})" title="移除">✕</button>
+              </span>
+            `).join('')}
+            <label class="attachment-upload-btn" for="pay-quote-input-${pay.id}">+ 上傳報價單</label>
+            <input type="file" id="pay-quote-input-${pay.id}" accept="application/pdf,image/*" multiple style="display:none" onchange="handlePaymentAttachmentSelect('${pay.id}', event)">
+          </div>
         </div>
       `;
     }).join('');
+  }
+  async function handlePaymentAttachmentSelect(paymentId, event){
+    const files = Array.from(event.target.files);
+    const pay = payments.find(p => p.id === paymentId);
+    const attachments = pay.attachments ? [...pay.attachments] : [];
+    for(const file of files){
+      try{
+        const ph = await uploadToDrive(file);
+        attachments.push({ id: ph.id, url: ph.viewUrl, name: file.name });
+      } catch(err){ alert(err.message); }
+    }
+    db.collection('payments').doc(paymentId).update({ attachments }).catch(err => alert('更新失敗:' + err.message));
+    event.target.value = '';
+  }
+  function deletePaymentAttachment(paymentId, idx){
+    const pay = payments.find(p => p.id === paymentId);
+    const attachments = [...(pay.attachments || [])];
+    attachments.splice(idx, 1);
+    db.collection('payments').doc(paymentId).update({ attachments }).catch(err => alert('移除失敗:' + err.message));
   }
   function openPaymentModal(paymentId){
     editingPaymentId = paymentId || null;
