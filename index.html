@@ -1,0 +1,1241 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>NOVA 專案追蹤台</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Noto+Serif+TC:wght@400;500;600&family=Inter:wght@300;400;500;600&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.13.0/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.13.0/firebase-auth-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.13.0/firebase-firestore-compat.js"></script>
+<style>
+  :root{
+    --bg: #ECE9E3;
+    --panel: #F7F5F1;
+    --panel-soft: #F1EEE8;
+    --line: rgba(63, 74, 82, 0.10);
+    --line-strong: rgba(63, 74, 82, 0.18);
+    --ink: #46525B;
+    --ink-soft: #7C8790;
+    --ink-faint: #A6ADB3;
+    --blue: #8CA3B0;
+    --blue-deep: #6E8894;
+    --blue-pale: #D3DEE2;
+    --sage: #A6AE9B;
+    --sage-bg: #E9EDE4;
+    --clay: #C7A78E;
+    --dust: #BFA3A0;
+    --radius: 10px;
+  }
+  *{ box-sizing: border-box; }
+  html, body{ height: 100%; }
+  body{ margin: 0; background: var(--bg); color: var(--ink); font-family: 'Inter', 'Noto Serif TC', sans-serif; min-height: 100vh; -webkit-font-smoothing: antialiased; }
+  ::selection{ background: var(--blue-pale); color: var(--ink); }
+  button{ font-family: inherit; }
+
+  #login-screen{ min-height: 100vh; display: flex; align-items: center; justify-content: center; padding: 24px; }
+  .login-card{ width: 100%; max-width: 380px; background: var(--panel); border-radius: 20px; padding: 48px 40px 40px; box-shadow: 0 1px 2px rgba(63,74,82,0.04), 0 20px 48px -24px rgba(63,74,82,0.18); text-align: center; }
+  .login-mark{ width: 40px; height: 40px; margin: 0 auto 22px; border-radius: 50%; background: linear-gradient(135deg, var(--blue) 0%, var(--blue-deep) 100%); }
+  .login-eyebrow{ font-family: 'JetBrains Mono', monospace; font-size: 10.5px; letter-spacing: 0.16em; color: var(--ink-faint); text-transform: uppercase; }
+  .login-title{ font-family: 'Noto Serif TC', serif; font-size: 22px; font-weight: 500; margin: 8px 0 6px; }
+  .login-sub{ color: var(--ink-soft); font-size: 13px; margin-bottom: 28px; font-weight: 300; }
+  .google-btn{ width: 100%; background: #fff; color: #3c4043; border: 1px solid var(--line-strong); font-weight: 500; font-size: 14px; padding: 12px 14px; cursor: pointer; border-radius: 10px; display: flex; align-items: center; justify-content: center; gap: 10px; }
+  .google-btn:hover{ background: var(--panel-soft); }
+  .google-g{ width: 18px; height: 18px; flex-shrink: 0; }
+  .pw-error{ color: var(--dust); font-size: 12px; margin-top: 10px; min-height: 16px; }
+  .demo-hint{ margin-top: 24px; padding-top: 18px; border-top: 1px solid var(--line); font-size: 11.5px; color: var(--ink-faint); font-weight: 300; }
+  .demo-hint b{ color: var(--ink-soft); font-weight: 500; }
+  .login-loading{ font-size: 13px; color: var(--ink-soft); }
+
+  #app{ display: none; }
+  .wrap{ max-width: 1080px; margin: 0 auto; padding: 32px 24px 60px; }
+  .top-bar{ display: flex; align-items: center; justify-content: space-between; margin-bottom: 22px; gap: 12px; flex-wrap: wrap; }
+  .brand{ font-family: 'Noto Serif TC', serif; font-size: 17px; font-weight: 500; }
+  .brand span{ color: var(--blue-deep); }
+  .user-chip{ font-size: 11.5px; color: var(--ink-soft); background: var(--panel); padding: 6px 12px; border-radius: 999px; margin-right: 8px; }
+  .logout-btn{ background: transparent; border: 1px solid var(--line-strong); color: var(--ink-soft); font-size: 12.5px; padding: 9px 16px; cursor: pointer; border-radius: 999px; }
+  .logout-btn:hover{ border-color: var(--dust); color: var(--dust); }
+
+  .main-nav{ display: flex; gap: 8px; margin-bottom: 24px; flex-wrap: wrap; }
+  .nav-tab{ background: none; border: 1px solid var(--line-strong); color: var(--ink-soft); font-size: 13px; padding: 9px 18px; border-radius: 999px; cursor: pointer; }
+  .nav-tab.active{ background: var(--blue-deep); color: #fff; border-color: var(--blue-deep); }
+
+  .view-head{ display: flex; align-items: flex-end; justify-content: space-between; margin-bottom: 20px; flex-wrap: wrap; gap: 14px; }
+  .view-title{ font-family: 'Noto Serif TC', serif; font-size: 26px; font-weight: 500; }
+  .primary-btn{ background: var(--blue-deep); color: #fff; border: none; font-size: 13px; font-weight: 500; padding: 11px 18px; border-radius: 999px; cursor: pointer; white-space: nowrap; }
+  .primary-btn:hover{ background: var(--blue); }
+  .primary-btn:disabled{ opacity: 0.5; cursor: not-allowed; }
+  .ghost-btn{ background: transparent; border: 1px solid var(--line-strong); color: var(--ink-soft); font-size: 12.5px; padding: 9px 15px; border-radius: 999px; cursor: pointer; }
+  .ghost-btn:hover{ border-color: var(--blue); color: var(--blue-deep); }
+
+  .project-grid{ display: grid; grid-template-columns: repeat(2, 1fr); gap: 14px; }
+  @media (max-width: 680px){ .project-grid{ grid-template-columns: 1fr; } }
+  .project-card{ background: var(--panel); border-radius: var(--radius); padding: 22px 24px; cursor: pointer; box-shadow: 0 1px 2px rgba(63,74,82,0.03); transition: transform 0.12s ease; }
+  .project-card:hover{ transform: translateY(-2px); }
+  .type-badge{ display: inline-block; font-size: 10.5px; letter-spacing: 0.06em; padding: 3px 9px; border-radius: 999px; font-weight: 500; }
+  .type-badge.task{ background: var(--blue-pale); color: var(--blue-deep); }
+  .type-badge.version{ background: #E7E0D6; color: var(--clay); }
+  .project-name{ font-size: 16px; font-weight: 600; margin: 12px 0 4px; }
+  .project-meta{ font-size: 12px; color: var(--ink-soft); font-weight: 300; }
+
+  #view-detail{ display: none; }
+  .back-link{ background: none; border: none; color: var(--ink-soft); font-size: 12.5px; cursor: pointer; padding: 0; margin-bottom: 14px; }
+  .back-link:hover{ color: var(--blue-deep); }
+  .detail-actions{ display: flex; gap: 10px; flex-wrap: wrap; }
+
+  .item-row{ background: var(--panel); border-radius: var(--radius); margin-bottom: 10px; overflow: hidden; }
+  .item-row-head{ display: flex; align-items: center; gap: 14px; padding: 16px 20px; cursor: pointer; }
+  .item-title{ font-size: 14.5px; font-weight: 500; flex: 1; }
+  .item-dates{ font-family: 'JetBrains Mono', monospace; font-size: 11px; color: var(--ink-soft); white-space: nowrap; }
+  .item-dates.overdue{ color: var(--dust); }
+  .item-count{ font-family: 'JetBrains Mono', monospace; font-size: 11px; color: var(--ink-faint); background: var(--panel-soft); padding: 3px 9px; border-radius: 999px; }
+  .chevron{ color: var(--ink-faint); font-size: 12px; transition: transform 0.15s ease; }
+  .item-row.open .chevron{ transform: rotate(90deg); }
+  .item-del{ background: none; border: none; color: var(--ink-faint); font-size: 15px; cursor: pointer; padding: 2px 6px; }
+  .item-del:hover{ color: var(--dust); }
+
+  .item-body{ display: none; padding: 4px 20px 20px; }
+  .item-row.open .item-body{ display: block; }
+
+  .section-lbl{ font-size: 11.5px; color: var(--ink-soft); font-weight: 500; margin-bottom: 8px; display: block; }
+  .confirmed-section{ margin-bottom: 18px; padding-bottom: 16px; border-bottom: 1px solid var(--line); }
+  .section-head-row{ display: flex; align-items: center; justify-content: space-between; margin-bottom: 8px; }
+  .confirmed-card{ background: var(--sage-bg); border-left: 3px solid var(--sage); border-radius: 6px; padding: 11px 14px; margin-bottom: 8px; position: relative; }
+  .confirmed-badge{ display: inline-flex; align-items: center; gap: 4px; font-size: 10px; color: #6E7A63; font-weight: 600; letter-spacing: 0.04em; }
+  .confirmed-text{ font-size: 13px; margin-top: 6px; line-height: 1.5; color: var(--ink); }
+  .confirmed-del{ position: absolute; top: 9px; right: 10px; background: none; border: none; color: #8A9481; cursor: pointer; font-size: 12px; }
+  .confirmed-del:hover{ color: var(--dust); }
+
+  .photo-section{ margin-bottom: 18px; padding-bottom: 16px; border-bottom: 1px solid var(--line); }
+  .add-photo-btn{ font-size: 11.5px; color: var(--blue-deep); border: 1px dashed var(--line-strong); padding: 5px 11px; border-radius: 6px; cursor: pointer; display: inline-block; background: none; }
+  .add-photo-btn:hover{ border-color: var(--blue); }
+  .photo-grid{ display: flex; flex-wrap: wrap; gap: 8px; }
+  .photo-thumb{ position: relative; width: 62px; height: 62px; border-radius: 8px; overflow: hidden; background: var(--panel-soft); }
+  .photo-thumb img{ width: 100%; height: 100%; object-fit: cover; display: block; cursor: pointer; }
+  .photo-thumb .del-btn{ position: absolute; top: 2px; right: 2px; background: rgba(40,48,54,0.6); color: #fff; border: none; width: 16px; height: 16px; border-radius: 50%; font-size: 9px; cursor: pointer; line-height: 1; }
+  .photo-thumb.uploading{ display:flex; align-items:center; justify-content:center; font-size: 9px; color: var(--ink-faint); }
+
+  .meeting-log{ display: flex; flex-direction: column; gap: 10px; margin-bottom: 14px; }
+  .meeting-card{ background: var(--panel-soft); border-radius: 8px; padding: 13px 16px; position: relative; }
+  .meeting-date{ font-family: 'JetBrains Mono', monospace; font-size: 11px; color: var(--blue-deep); font-weight: 500; }
+  .meeting-content{ font-size: 13px; margin-top: 6px; line-height: 1.6; white-space: pre-wrap; }
+  .meeting-sub{ margin-top: 9px; }
+  .meeting-sub .lbl{ font-size: 10px; color: var(--ink-faint); letter-spacing: 0.04em; }
+  .meeting-sub .val{ font-size: 12px; color: var(--ink-soft); margin-top: 2px; }
+  .meeting-del{ position: absolute; top: 10px; right: 10px; background: none; border: none; color: var(--ink-faint); font-size: 13px; cursor: pointer; }
+  .meeting-del:hover{ color: var(--dust); }
+  .empty-note{ font-size: 12px; color: var(--ink-faint); padding: 6px 2px 14px; }
+
+  .todo-list{ display: flex; flex-direction: column; gap: 6px; margin-top: 10px; }
+  .todo-item{ display: flex; align-items: center; gap: 8px; font-size: 12.5px; }
+  .todo-item.done .todo-text{ text-decoration: line-through; color: var(--ink-faint); }
+  .todo-item input[type=checkbox]{ accent-color: var(--blue-deep); width: 14px; height: 14px; flex-shrink: 0; }
+  .todo-text{ flex: 1; }
+  .todo-tag{ font-size: 10px; background: var(--panel); padding: 2px 8px; border-radius: 999px; color: var(--ink-soft); white-space: nowrap; }
+  .todo-tag.due{ color: var(--blue-deep); }
+
+  .add-meeting-toggle{ background: none; border: 1px dashed var(--line-strong); color: var(--ink-soft); font-size: 12px; padding: 9px 14px; border-radius: 8px; cursor: pointer; width: 100%; text-align: center; }
+  .add-meeting-toggle:hover{ border-color: var(--blue); color: var(--blue-deep); }
+
+  .meeting-form{ display: none; margin-top: 10px; background: var(--panel-soft); border-radius: 8px; padding: 14px 16px; }
+  .meeting-form.open{ display: block; }
+  .form-row{ margin-bottom: 12px; }
+  .form-row label{ display: block; font-size: 10.5px; color: var(--ink-faint); letter-spacing: 0.04em; margin-bottom: 5px; }
+  .form-row input, .form-row textarea{ width: 100%; border: 1px solid var(--line-strong); background: var(--panel); color: var(--ink); font-size: 13px; padding: 9px 11px; border-radius: 6px; font-family: inherit; outline: none; resize: vertical; }
+  .form-row input:focus, .form-row textarea:focus{ border-color: var(--blue); }
+  .form-actions{ display: flex; gap: 8px; margin-top: 4px; }
+  .form-actions .primary-btn{ padding: 9px 16px; font-size: 12.5px; }
+
+  .todo-row{ display: flex; gap: 6px; margin-bottom: 6px; align-items: center; }
+  .todo-row input{ border: 1px solid var(--line-strong); background: var(--panel); font-size: 12px; padding: 7px 9px; border-radius: 6px; }
+  .todo-row .tr-text{ flex: 2; }
+  .todo-row .tr-owner{ flex: 1; }
+  .todo-row .tr-due{ flex: 1; }
+  .todo-row-del{ background: none; border: none; color: var(--ink-faint); cursor: pointer; font-size: 13px; flex-shrink: 0; }
+
+  .lightbox-overlay{ display: none; position: fixed; inset: 0; background: rgba(20,25,30,0.85); align-items: center; justify-content: center; z-index: 100; padding: 30px; }
+  .lightbox-overlay.open{ display: flex; }
+  .lightbox-overlay img{ max-width: 100%; max-height: 100%; border-radius: 8px; }
+  .lightbox-close{ position: absolute; top: 22px; right: 26px; background: none; border: none; color: #fff; font-size: 26px; cursor: pointer; }
+
+  .stat-row{ display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; margin-bottom: 18px; }
+  @media (max-width: 680px){ .stat-row{ grid-template-columns: 1fr; } }
+  .stat-card{ background: var(--panel); border-radius: var(--radius); padding: 20px 22px; }
+  .stat-label{ font-size: 11.5px; color: var(--ink-soft); margin-bottom: 8px; }
+  .stat-num{ font-family: 'Noto Serif TC', serif; font-size: 26px; font-weight: 500; }
+  .stat-num.dust{ color: var(--dust); }
+  .stat-num.sage{ color: var(--sage); }
+
+  #view-payments{ display: none; }
+  .filters-row{ display: flex; gap: 10px; margin-bottom: 16px; flex-wrap: wrap; }
+  .filters-row select{ border: 1px solid var(--line-strong); background: var(--panel); color: var(--ink); font-size: 12.5px; padding: 9px 12px; border-radius: 8px; }
+  .payment-card, .material-card{ background: var(--panel); border-radius: var(--radius); padding: 16px 20px; margin-bottom: 10px; display: flex; align-items: center; gap: 16px; flex-wrap: wrap; }
+  .payment-main{ flex: 1; min-width: 180px; }
+  .payment-name{ font-size: 14px; font-weight: 500; }
+  .payment-sub{ font-size: 11.5px; color: var(--ink-soft); margin-top: 4px; }
+  .payment-amount{ font-family: 'JetBrains Mono', monospace; font-size: 15px; font-weight: 600; min-width: 90px; text-align: right; }
+  .status-badge{ font-size: 10.5px; padding: 3px 10px; border-radius: 999px; font-weight: 500; white-space: nowrap; }
+  .status-badge.unpaid{ background: #F0DCD8; color: var(--dust); }
+  .status-badge.paid{ background: #DCE4DC; color: var(--sage); }
+  .pay-action{ display: flex; align-items: center; gap: 6px; }
+  .pay-action input[type=date]{ border: 1px solid var(--line-strong); background: var(--panel-soft); font-size: 12px; padding: 6px 8px; border-radius: 6px; }
+  .row-del{ background: none; border: none; color: var(--ink-faint); cursor: pointer; font-size: 14px; }
+  .row-del:hover{ color: var(--dust); }
+
+  #view-todos{ display: none; }
+  .todo-overview-row{ background: var(--panel); border-radius: 8px; padding: 12px 16px; margin-bottom: 8px; display: flex; align-items: center; gap: 10px; }
+  .todo-overview-row input[type=checkbox]{ accent-color: var(--blue-deep); width: 15px; height: 15px; flex-shrink: 0; }
+  .todo-overview-text{ flex: 1; font-size: 13px; }
+  .todo-overview-context{ font-size: 10.5px; color: var(--ink-faint); margin-top: 3px; }
+  .sub-view-title{ font-family: 'Noto Serif TC', serif; font-size: 17px; font-weight: 500; margin: 26px 0 12px; }
+  .standalone-add-row{ display: flex; gap: 8px; margin-bottom: 14px; flex-wrap: wrap; }
+  .standalone-add-row input{ border: 1px solid var(--line-strong); background: var(--panel); font-size: 12.5px; padding: 9px 11px; border-radius: 8px; }
+  .standalone-add-row .st-text{ flex: 2; min-width: 160px; }
+  .standalone-add-row .st-owner{ flex: 1; min-width: 100px; }
+  .standalone-add-row .st-due{ flex: 1; min-width: 130px; }
+
+  #view-materials{ display: none; }
+  .material-group-title{ font-family: 'Noto Serif TC', serif; font-size: 15px; font-weight: 500; margin: 18px 0 8px; }
+  .material-group-title:first-child{ margin-top: 0; }
+  .material-field{ font-size: 12px; min-width: 90px; }
+  .material-field .lbl{ font-size: 10px; color: var(--ink-faint); }
+  .material-field .val{ color: var(--ink); margin-top: 2px; }
+
+  .modal-overlay{ display: none; position: fixed; inset: 0; background: rgba(70,82,91,0.35); align-items: center; justify-content: center; padding: 20px; z-index: 50; overflow-y: auto; }
+  .modal-overlay.open{ display: flex; }
+  .modal{ background: var(--panel); border-radius: 16px; padding: 28px 26px; width: 100%; max-width: 380px; margin: auto; }
+  .modal h3{ font-family: 'Noto Serif TC', serif; font-size: 18px; font-weight: 500; margin: 0 0 18px; }
+  .modal select{ width: 100%; border: 1px solid var(--line-strong); background: var(--panel-soft); color: var(--ink); font-size: 13px; padding: 9px 11px; border-radius: 6px; }
+  .type-choice{ display: flex; gap: 8px; margin-bottom: 14px; }
+  .type-opt{ flex: 1; border: 1px solid var(--line-strong); border-radius: 8px; padding: 12px 10px; text-align: center; font-size: 12.5px; cursor: pointer; color: var(--ink-soft); }
+  .type-opt.selected{ border-color: var(--blue-deep); color: var(--blue-deep); background: var(--blue-pale); font-weight: 500; }
+  .modal-actions{ display: flex; justify-content: flex-end; gap: 8px; margin-top: 6px; }
+
+  .footnote{ margin-top: 28px; font-size: 11.5px; color: var(--ink-faint); text-align: center; font-weight: 300; }
+</style>
+</head>
+<body>
+
+  <div id="login-screen">
+    <div class="login-card">
+      <div class="login-mark"></div>
+      <div class="login-eyebrow">Nova Workspace</div>
+      <h1 class="login-title">專案追蹤台</h1>
+      <div class="login-sub">請使用已授權的 Google 帳號登入</div>
+      <button class="google-btn" onclick="googleSignIn()">
+        <svg class="google-g" viewBox="0 0 48 48"><path fill="#FFC107" d="M43.6 20.5H42V20H24v8h11.3C33.9 32.6 29.4 36 24 36c-6.6 0-12-5.4-12-12s5.4-12 12-12c3.1 0 5.9 1.2 8 3.1l6-6C34.9 5.5 29.7 3 24 3 12.4 3 3 12.4 3 24s9.4 21 21 21 21-9.4 21-21c0-1.2-.1-2.3-.4-3.5z"/><path fill="#FF3D00" d="M6.3 14.7l6.6 4.8C14.6 15.4 18.9 12 24 12c3.1 0 5.9 1.2 8 3.1l6-6C34.9 5.5 29.7 3 24 3 16 3 9 7.6 6.3 14.7z"/><path fill="#4CAF50" d="M24 45c5.6 0 10.7-2.1 14.5-5.7l-6.7-5.5C29.6 35.6 26.9 36 24 36c-5.4 0-9.9-3.4-11.5-8.2l-6.6 5C9 40.4 16 45 24 45z"/><path fill="#1976D2" d="M43.6 20.5H42V20H24v8h11.3c-1 2.9-3 5.3-5.5 6.8l6.7 5.5C40.4 37.4 45 31.3 45 24c0-1.2-.1-2.3-.4-3.5z"/></svg>
+        使用 Google 帳號登入
+      </button>
+      <div class="pw-error" id="login-error"></div>
+      <div class="login-loading" id="login-loading" style="display:none;">登入中…</div>
+      <div class="demo-hint">只有已加入測試使用者名單的 Google 帳號才能登入。</div>
+    </div>
+  </div>
+
+  <div id="app">
+    <div class="wrap">
+      <div class="top-bar">
+        <div class="brand">NOVA <span>·</span> 專案追蹤台</div>
+        <div>
+          <span class="user-chip" id="user-email"></span>
+          <button class="logout-btn" onclick="logout()">登出</button>
+        </div>
+      </div>
+
+      <div class="main-nav">
+        <button class="nav-tab active" id="tab-projects" onclick="switchTab('projects')">專案</button>
+        <button class="nav-tab" id="tab-todos" onclick="switchTab('todos')">待辦總覽</button>
+        <button class="nav-tab" id="tab-materials" onclick="switchTab('materials')">物料對應</button>
+        <button class="nav-tab" id="tab-payments" onclick="switchTab('payments')">對帳區</button>
+      </div>
+
+      <div id="view-projects">
+        <div class="view-head">
+          <div class="view-title">我的專案</div>
+          <button class="primary-btn" onclick="openNewProjectModal()">+ 新增專案</button>
+        </div>
+        <div class="project-grid" id="project-grid"></div>
+      </div>
+
+      <div id="view-detail">
+        <button class="back-link" onclick="showProjectList()">← 返回專案列表</button>
+        <div class="view-head">
+          <div class="view-title" id="detail-title">—</div>
+          <div class="detail-actions">
+            <button class="ghost-btn" onclick="exportWord()">匯出 Word</button>
+            <button class="ghost-btn" onclick="exportPDF()">匯出 PDF</button>
+            <button class="primary-btn" id="add-item-btn" onclick="openNewItemModal()">—</button>
+          </div>
+        </div>
+        <div id="item-list"></div>
+      </div>
+
+      <div id="view-todos">
+        <div class="view-head"><div class="view-title">待辦總覽</div></div>
+        <div class="sub-view-title" style="margin-top:0;">各專案尚未完成的待辦事項</div>
+        <div id="todo-overview-list"></div>
+        <div class="sub-view-title">獨立待辦事項(不屬於任何專案)</div>
+        <div class="standalone-add-row">
+          <input class="st-text" id="st-text" type="text" placeholder="待辦事項">
+          <input class="st-owner" id="st-owner" type="text" placeholder="負責人">
+          <input class="st-due" id="st-due" type="date">
+          <button class="primary-btn" onclick="addStandaloneTodo()">+ 新增</button>
+        </div>
+        <div id="standalone-todo-list"></div>
+      </div>
+
+      <div id="view-materials">
+        <div class="view-head">
+          <div class="view-title">物料對應區</div>
+          <div class="detail-actions">
+            <button class="ghost-btn" onclick="exportMaterialsWord()">匯出 Word</button>
+            <button class="ghost-btn" onclick="exportMaterialsPDF()">匯出 PDF</button>
+            <button class="primary-btn" onclick="openNewMaterialModal()">+ 新增物料</button>
+          </div>
+        </div>
+        <div class="filters-row"><select id="mf-project" onchange="renderMaterials()"></select></div>
+        <div id="material-list"></div>
+      </div>
+
+      <div id="view-payments">
+        <div class="view-head">
+          <div class="view-title">對帳區</div>
+          <button class="primary-btn" onclick="openNewPaymentModal()">+ 新增待付款項目</button>
+        </div>
+        <div class="stat-row" id="payment-stats"></div>
+        <div class="filters-row">
+          <select id="pf-project" onchange="renderPayments()"></select>
+          <select id="pf-status" onchange="renderPayments()">
+            <option value="all">全部狀態</option>
+            <option value="unpaid">未付款</option>
+            <option value="paid">已付款</option>
+          </select>
+        </div>
+        <div id="payment-list"></div>
+      </div>
+
+      <div class="footnote">— 資料即時同步至 Firestore,照片儲存於 Google Drive —</div>
+    </div>
+  </div>
+
+  <div class="lightbox-overlay" id="lightbox-overlay" onclick="closeLightbox()">
+    <button class="lightbox-close" onclick="closeLightbox()">✕</button>
+    <img id="lightbox-img" src="" onclick="event.stopPropagation()">
+  </div>
+
+  <div class="modal-overlay" id="modal-new-project">
+    <div class="modal">
+      <h3>新增專案</h3>
+      <div class="form-row"><label>專案名稱</label><input id="np-name" type="text" placeholder="例如:官網 Q4 改版"></div>
+      <div class="form-row">
+        <label>追蹤方式</label>
+        <div class="type-choice">
+          <div class="type-opt selected" id="np-type-task" onclick="selectProjType('task')">任務追蹤<br>(起訖時間)</div>
+          <div class="type-opt" id="np-type-version" onclick="selectProjType('version')">版本追蹤<br>(逐版會議)</div>
+        </div>
+      </div>
+      <div class="modal-actions">
+        <button class="ghost-btn" onclick="closeModal('modal-new-project')">取消</button>
+        <button class="primary-btn" onclick="createProject()">建立</button>
+      </div>
+    </div>
+  </div>
+
+  <div class="modal-overlay" id="modal-new-item">
+    <div class="modal">
+      <h3 id="ni-title">新增任務</h3>
+      <div class="form-row"><label id="ni-name-label">任務名稱</label><input id="ni-name" type="text"></div>
+      <div id="ni-date-fields">
+        <div class="form-row"><label>起始時間</label><input id="ni-start" type="date"></div>
+        <div class="form-row"><label>預計完成時間</label><input id="ni-due" type="date"></div>
+      </div>
+      <div class="modal-actions">
+        <button class="ghost-btn" onclick="closeModal('modal-new-item')">取消</button>
+        <button class="primary-btn" onclick="createItem()">新增</button>
+      </div>
+    </div>
+  </div>
+
+  <div class="modal-overlay" id="modal-new-confirmed">
+    <div class="modal">
+      <h3>新增確認事項</h3>
+      <div class="type-choice">
+        <div class="type-opt selected" id="cf-type-task" onclick="selectConfirmType('task')">任務確認</div>
+        <div class="type-opt" id="cf-type-vendor" onclick="selectConfirmType('vendor')">廠商確認</div>
+      </div>
+      <div id="cf-task-fields">
+        <div class="form-row"><label>確認內容</label><textarea id="cf-text" rows="3"></textarea></div>
+      </div>
+      <div id="cf-vendor-fields" style="display:none">
+        <div class="form-row"><label>廠商名稱</label><input id="cf-vendor" type="text"></div>
+        <div class="form-row"><label>品名</label><input id="cf-product" type="text"></div>
+      </div>
+      <div class="modal-actions">
+        <button class="ghost-btn" onclick="closeModal('modal-new-confirmed')">取消</button>
+        <button class="primary-btn" onclick="createConfirmedEntry()">新增</button>
+      </div>
+    </div>
+  </div>
+
+  <div class="modal-overlay" id="modal-new-payment">
+    <div class="modal">
+      <h3>新增待付款項目</h3>
+      <div class="form-row"><label>項目名稱</label><input id="np2-name" type="text"></div>
+      <div class="form-row"><label>金額</label><input id="np2-amount" type="number"></div>
+      <div class="form-row"><label>付款對象</label><input id="np2-payee" type="text"></div>
+      <div class="form-row"><label>到期日</label><input id="np2-due" type="date"></div>
+      <div class="form-row"><label>關聯專案</label><select id="np2-project"></select></div>
+      <div class="form-row"><label>備註</label><textarea id="np2-note" rows="2"></textarea></div>
+      <div class="modal-actions">
+        <button class="ghost-btn" onclick="closeModal('modal-new-payment')">取消</button>
+        <button class="primary-btn" onclick="createPayment()">新增</button>
+      </div>
+    </div>
+  </div>
+
+  <div class="modal-overlay" id="modal-new-material">
+    <div class="modal">
+      <h3>新增物料</h3>
+      <div class="form-row"><label>產品名稱</label><input id="nm-product" type="text"></div>
+      <div class="form-row"><label>供料廠商</label><input id="nm-vendor" type="text"></div>
+      <div class="form-row"><label>料號</label><input id="nm-partno" type="text"></div>
+      <div class="form-row"><label>品名</label><input id="nm-itemname" type="text"></div>
+      <div class="form-row"><label>數量</label><input id="nm-qty" type="text"></div>
+      <div class="form-row"><label>訂貨日期</label><input id="nm-orderdate" type="date"></div>
+      <div class="form-row"><label>關聯專案</label><select id="nm-project"></select></div>
+      <div class="modal-actions">
+        <button class="ghost-btn" onclick="closeModal('modal-new-material')">取消</button>
+        <button class="primary-btn" onclick="createMaterial()">新增</button>
+      </div>
+    </div>
+  </div>
+
+<script>
+  // ---------- Firebase init ----------
+  const firebaseConfig = {
+    apiKey: "AIzaSyBtp0vOOPLni_uEc1xybntv8YyutwLKnsE",
+    authDomain: "chuanho-to-do-items.firebaseapp.com",
+    projectId: "chuanho-to-do-items",
+    storageBucket: "chuanho-to-do-items.firebasestorage.app",
+    messagingSenderId: "269632396729",
+    appId: "1:269632396729:web:8b64989b580a5a72076a68",
+    measurementId: "G-7Y917FJRYC"
+  };
+  firebase.initializeApp(firebaseConfig);
+  const auth = firebase.auth();
+  const db = firebase.firestore();
+  const provider = new firebase.auth.GoogleAuthProvider();
+  provider.addScope('https://www.googleapis.com/auth/drive.file');
+
+  let driveAccessToken = null;
+
+  function googleSignIn(){
+    document.getElementById('login-error').textContent = '';
+    document.getElementById('login-loading').style.display = 'block';
+    auth.signInWithPopup(provider).then(result => {
+      driveAccessToken = result.credential ? result.credential.accessToken : null;
+      document.getElementById('login-loading').style.display = 'none';
+    }).catch(err => {
+      document.getElementById('login-loading').style.display = 'none';
+      document.getElementById('login-error').textContent = '登入失敗:此帳號可能不在授權名單中,或發生錯誤。(' + err.code + ')';
+    });
+  }
+  function logout(){ auth.signOut(); driveAccessToken = null; }
+
+  auth.onAuthStateChanged(user => {
+    if(user){
+      document.getElementById('login-screen').style.display = 'none';
+      document.getElementById('app').style.display = 'block';
+      document.getElementById('user-email').textContent = user.email;
+      startListeners();
+    } else {
+      document.getElementById('login-screen').style.display = 'flex';
+      document.getElementById('app').style.display = 'none';
+      stopListeners();
+    }
+  });
+
+  // ---------- state ----------
+  const uid = () => (crypto.randomUUID ? crypto.randomUUID() : 'id-' + Date.now() + '-' + Math.random().toString(36).slice(2));
+  let currentProjectId = null;
+  let currentTab = 'projects';
+  let openItems = new Set();
+  let openForms = new Set();
+  let confirmTargetItemId = null;
+  let newConfirmType = 'task';
+  let newProjType = 'task';
+
+  let projects = [];
+  let payments = [];
+  let materials = [];
+  let standaloneTodos = [];
+  let unsubscribers = [];
+
+  function startListeners(){
+    unsubscribers.push(db.collection('projects').onSnapshot(snap => {
+      projects = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+      if(currentTab === 'projects' && !currentProjectId) renderProjectList();
+      if(currentTab === 'todos') renderTodoOverview();
+      if(currentTab === 'materials') renderMaterials();
+      if(currentTab === 'payments') renderPayments();
+    }, err => console.error('projects listener', err)));
+
+    unsubscribers.push(db.collection('payments').onSnapshot(snap => {
+      payments = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+      if(currentTab === 'payments') renderPayments();
+    }, err => console.error('payments listener', err)));
+
+    unsubscribers.push(db.collection('materials').onSnapshot(snap => {
+      materials = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+      if(currentTab === 'materials') renderMaterials();
+    }, err => console.error('materials listener', err)));
+
+    unsubscribers.push(db.collection('standaloneTodos').onSnapshot(snap => {
+      standaloneTodos = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+      if(currentTab === 'todos') renderTodoOverview();
+    }, err => console.error('standaloneTodos listener', err)));
+
+    renderProjectList();
+  }
+  function stopListeners(){ unsubscribers.forEach(u => u()); unsubscribers = []; }
+
+  // ---------- tab switching ----------
+  function switchTab(tab){
+    currentTab = tab;
+    ['projects','todos','materials','payments'].forEach(t => {
+      document.getElementById('tab-' + t).classList.toggle('active', t === tab);
+      document.getElementById('view-' + t).style.display = (t === tab) ? 'block' : 'none';
+    });
+    document.getElementById('view-detail').style.display = 'none';
+    if(tab === 'projects'){ currentProjectId = null; renderProjectList(); }
+    else if(tab === 'todos'){ renderTodoOverview(); }
+    else if(tab === 'materials'){ renderMaterials(); }
+    else if(tab === 'payments'){ renderPayments(); }
+  }
+
+  // ---------- project list ----------
+  function renderProjectList(){
+    const grid = document.getElementById('project-grid');
+    if(projects.length === 0){
+      grid.innerHTML = '<div class="empty-note">還沒有專案,點右上角「+ 新增專案」建立第一個。</div>';
+      return;
+    }
+    grid.innerHTML = projects.map(p => `
+      <div class="project-card" onclick="openProject('${p.id}')">
+        <span class="type-badge ${p.type}">${p.type === 'task' ? '任務追蹤' : '版本追蹤'}</span>
+        <div class="project-name">${escapeHTML(p.name)}</div>
+        <div class="project-meta">${(p.items||[]).length} 個${p.type === 'task' ? '任務' : '版本'} · 建立於 ${p.createdAt}</div>
+      </div>
+    `).join('');
+  }
+  function showProjectList(){
+    document.getElementById('view-detail').style.display = 'none';
+    document.getElementById('view-projects').style.display = 'block';
+    currentProjectId = null;
+  }
+
+  function openNewProjectModal(){
+    document.getElementById('np-name').value = '';
+    selectProjType('task');
+    document.getElementById('modal-new-project').classList.add('open');
+  }
+  function selectProjType(t){
+    newProjType = t;
+    document.getElementById('np-type-task').classList.toggle('selected', t === 'task');
+    document.getElementById('np-type-version').classList.toggle('selected', t === 'version');
+  }
+  function createProject(){
+    const name = document.getElementById('np-name').value.trim();
+    if(!name){ alert('請輸入專案名稱'); return; }
+    db.collection('projects').add({
+      name, type: newProjType, createdAt: new Date().toISOString().slice(0,10), items: []
+    }).then(ref => {
+      closeModal('modal-new-project');
+      openProject(ref.id);
+    }).catch(err => alert('建立失敗:' + err.message));
+  }
+
+  // ---------- project detail ----------
+  function openProject(id){
+    currentProjectId = id;
+    openItems = new Set(); openForms = new Set();
+    document.getElementById('view-projects').style.display = 'none';
+    document.getElementById('view-detail').style.display = 'block';
+    renderDetail();
+  }
+  function getCurrentProject(){ return projects.find(p => p.id === currentProjectId); }
+  function saveProject(p){
+    db.collection('projects').doc(p.id).set({ name: p.name, type: p.type, createdAt: p.createdAt, items: p.items })
+      .catch(err => alert('儲存失敗:' + err.message));
+  }
+
+  function renderDetail(){
+    const p = getCurrentProject();
+    if(!p){ showProjectList(); return; }
+    document.getElementById('detail-title').textContent = p.name;
+    document.getElementById('add-item-btn').textContent = p.type === 'task' ? '+ 新增任務' : '+ 新增版本';
+    const list = document.getElementById('item-list');
+    if(!p.items || p.items.length === 0){
+      list.innerHTML = `<div class="empty-note">還沒有${p.type === 'task' ? '任務' : '版本'},點右上角新增一個吧。</div>`;
+      return;
+    }
+    const today = new Date().toISOString().slice(0,10);
+    list.innerHTML = p.items.map(item => itemRowHTML(p, item, today)).join('');
+  }
+
+  function itemRowHTML(p, item, today){
+    const overdue = p.type === 'task' && item.due && item.due < today;
+    const dateInfo = p.type === 'task'
+      ? `<span class="item-dates ${overdue ? 'overdue' : ''}">${item.start || '–'} → ${item.due || '–'}${overdue ? ' 逾期' : ''}</span>` : '';
+    const meetingsSorted = [...(item.meetings||[])].sort((a,b) => a.date.localeCompare(b.date));
+    const isOpen = openItems.has(item.id);
+    const formOpen = openForms.has(item.id);
+    const photoLabel = p.type === 'task' ? '任務照片' : '版本照片';
+    const confirmedEntries = item.confirmedEntries || [];
+    const photos = item.photos || [];
+
+    return `
+      <div class="item-row ${isOpen ? 'open' : ''}" id="row-${item.id}">
+        <div class="item-row-head" onclick="toggleItem('${item.id}')">
+          <span class="chevron">▸</span>
+          <span class="item-title">${escapeHTML(item.name)}</span>
+          ${dateInfo}
+          <span class="item-count">${(item.meetings||[]).length} 則會議紀錄</span>
+          <button class="item-del" onclick="event.stopPropagation(); deleteItem('${item.id}')" title="刪除">✕</button>
+        </div>
+        <div class="item-body">
+          <div class="confirmed-section">
+            <div class="section-head-row">
+              <span class="section-lbl" style="margin:0;">已確認事項</span>
+              <button class="add-photo-btn" onclick="openNewConfirmedModal('${item.id}')">+ 新增確認事項</button>
+            </div>
+            ${confirmedEntries.length ? confirmedEntries.map(e => confirmedEntryHTML(item.id, e)).join('') : '<div class="empty-note" style="padding:0 0 4px;">尚無確認事項</div>'}
+          </div>
+
+          <div class="photo-section">
+            <div class="section-head-row">
+              <span class="section-lbl" style="margin:0;">${photoLabel}</span>
+              <label class="add-photo-btn" for="item-photo-input-${item.id}">+ 新增照片</label>
+              <input type="file" id="item-photo-input-${item.id}" accept="image/*" multiple style="display:none" onchange="handleItemPhotoSelect('${item.id}', event)">
+            </div>
+            <div id="item-photo-grid-${item.id}">
+              ${photos.length ? photoGridHTML(photos, 'item', item.id) : '<div class="empty-note" style="padding:0;">尚無照片</div>'}
+            </div>
+          </div>
+
+          <span class="section-lbl">會議紀錄</span>
+          <div class="meeting-log">
+            ${meetingsSorted.length ? meetingsSorted.map(m => meetingCardHTML(item.id, m)).join('') : '<div class="empty-note">尚無會議紀錄。</div>'}
+          </div>
+          <button class="add-meeting-toggle" onclick="toggleMeetingForm('${item.id}')">+ 新增會議紀錄</button>
+          <div class="meeting-form ${formOpen ? 'open' : ''}" id="form-${item.id}">
+            <div class="form-row"><label>日期</label><input type="date" id="mf-date-${item.id}" value="${today}"></div>
+            <div class="form-row"><label>會議內容</label><textarea id="mf-content-${item.id}" rows="3"></textarea></div>
+            <div class="form-row"><label>與會人</label><input type="text" id="mf-attendees-${item.id}" placeholder="例如:陳、林"></div>
+            <div class="form-row">
+              <label>待辦事項</label>
+              <div id="todo-rows-${item.id}"></div>
+              <button type="button" class="add-meeting-toggle" style="margin-top:2px;" onclick="addTodoRow('${item.id}')">+ 新增待辦項目</button>
+            </div>
+            <div class="form-row">
+              <label>照片</label>
+              <label class="add-photo-btn" for="mf-photo-input-${item.id}">+ 選擇照片</label>
+              <input type="file" id="mf-photo-input-${item.id}" accept="image/*" multiple style="display:none" onchange="handleMeetingPhotoSelect('${item.id}', event)">
+              <div class="photo-grid" id="form-photo-grid-${item.id}" style="margin-top:8px;"></div>
+            </div>
+            <div class="form-actions">
+              <button class="primary-btn" onclick="saveMeeting('${item.id}')">儲存紀錄</button>
+              <button class="ghost-btn" onclick="toggleMeetingForm('${item.id}')">取消</button>
+            </div>
+          </div>
+        </div>
+      </div>
+    `;
+  }
+
+  function confirmedEntryHTML(itemId, e){
+    const label = e.type === 'task' ? '任務確認' : '廠商確認';
+    const body = e.type === 'task' ? escapeHTML(e.text) : `廠商:${escapeHTML(e.vendorName) || '—'}　品名:${escapeHTML(e.productName) || '—'}`;
+    return `
+      <div class="confirmed-card">
+        <button class="confirmed-del" onclick="deleteConfirmedEntry('${itemId}','${e.id}')">✕</button>
+        <span class="confirmed-badge">✓ ${label} · ${e.date}</span>
+        <div class="confirmed-text">${body}</div>
+      </div>
+    `;
+  }
+  function openNewConfirmedModal(itemId){
+    confirmTargetItemId = itemId;
+    document.getElementById('cf-text').value = '';
+    document.getElementById('cf-vendor').value = '';
+    document.getElementById('cf-product').value = '';
+    selectConfirmType('task');
+    document.getElementById('modal-new-confirmed').classList.add('open');
+  }
+  function selectConfirmType(t){
+    newConfirmType = t;
+    document.getElementById('cf-type-task').classList.toggle('selected', t === 'task');
+    document.getElementById('cf-type-vendor').classList.toggle('selected', t === 'vendor');
+    document.getElementById('cf-task-fields').style.display = t === 'task' ? 'block' : 'none';
+    document.getElementById('cf-vendor-fields').style.display = t === 'vendor' ? 'block' : 'none';
+  }
+  function createConfirmedEntry(){
+    const p = getCurrentProject();
+    const item = p.items.find(i => i.id === confirmTargetItemId);
+    if(!item.confirmedEntries) item.confirmedEntries = [];
+    const today = new Date().toISOString().slice(0,10);
+    if(newConfirmType === 'task'){
+      const text = document.getElementById('cf-text').value.trim();
+      if(!text){ alert('請輸入確認內容'); return; }
+      item.confirmedEntries.push({ id: uid(), type: 'task', text, date: today });
+    } else {
+      const vendorName = document.getElementById('cf-vendor').value.trim();
+      const productName = document.getElementById('cf-product').value.trim();
+      if(!vendorName && !productName){ alert('請至少填寫廠商名稱或品名'); return; }
+      item.confirmedEntries.push({ id: uid(), type: 'vendor', vendorName, productName, date: today });
+    }
+    closeModal('modal-new-confirmed');
+    openItems.add(confirmTargetItemId);
+    renderDetail();
+    document.getElementById('row-' + confirmTargetItemId).classList.add('open');
+    saveProject(p);
+  }
+  function deleteConfirmedEntry(itemId, entryId){
+    const p = getCurrentProject();
+    const item = p.items.find(i => i.id === itemId);
+    item.confirmedEntries = item.confirmedEntries.filter(e => e.id !== entryId);
+    openItems.add(itemId);
+    renderDetail();
+    document.getElementById('row-' + itemId).classList.add('open');
+    saveProject(p);
+  }
+
+  function photoGridHTML(photos, kind, itemId, meetingId){
+    return `<div class="photo-grid">${photos.map((ph, idx) => `
+      <div class="photo-thumb">
+        <img src="${ph.url}" onclick="openLightbox(this.src)">
+        <button class="del-btn" onclick="event.stopPropagation(); deletePhoto('${kind}','${itemId}','${meetingId || ''}',${idx})">✕</button>
+      </div>
+    `).join('')}</div>`;
+  }
+
+  function meetingCardHTML(itemId, m){
+    const todosHTML = m.todos && m.todos.length ? `<div class="todo-list">${m.todos.map(t => `
+        <div class="todo-item ${t.done ? 'done' : ''}">
+          <input type="checkbox" ${t.done ? 'checked' : ''} onchange="toggleTodoDone('${itemId}','${m.id}','${t.id}')">
+          <span class="todo-text">${escapeHTML(t.text)}</span>
+          ${t.owner ? `<span class="todo-tag">${escapeHTML(t.owner)}</span>` : ''}
+          ${t.due ? `<span class="todo-tag due">${t.due}</span>` : ''}
+        </div>`).join('')}</div>` : '';
+    const photosHTML = m.photos && m.photos.length ? photoGridHTML(m.photos, 'meeting', itemId, m.id) : '';
+    return `
+      <div class="meeting-card">
+        <button class="meeting-del" onclick="deleteMeeting('${itemId}','${m.id}')" title="刪除">✕</button>
+        <div class="meeting-date">${m.date}</div>
+        <div class="meeting-content">${escapeHTML(m.content) || '（未填寫內容）'}</div>
+        <div class="meeting-sub"><div class="lbl">與會人</div><div class="val">${escapeHTML(m.attendees) || '—'}</div></div>
+        ${todosHTML}
+        ${photosHTML ? `<div style="margin-top:10px;">${photosHTML}</div>` : ''}
+      </div>
+    `;
+  }
+
+  function toggleItem(id){
+    if(openItems.has(id)) openItems.delete(id); else openItems.add(id);
+    document.getElementById('row-' + id).classList.toggle('open');
+  }
+  function toggleMeetingForm(id){
+    if(openForms.has(id)) openForms.delete(id); else { openForms.add(id); openItems.add(id); }
+    document.getElementById('form-' + id).classList.toggle('open');
+    document.getElementById('row-' + id).classList.add('open');
+  }
+  function deleteItem(id){
+    if(!confirm('確定要刪除這個項目嗎?會一併刪除底下的會議紀錄、照片與確認事項。')) return;
+    const p = getCurrentProject();
+    p.items = p.items.filter(i => i.id !== id);
+    renderDetail();
+    saveProject(p);
+  }
+  function deleteMeeting(itemId, meetingId){
+    const p = getCurrentProject();
+    const item = p.items.find(i => i.id === itemId);
+    item.meetings = item.meetings.filter(m => m.id !== meetingId);
+    openItems.add(itemId);
+    renderDetail();
+    document.getElementById('row-' + itemId).classList.add('open');
+    saveProject(p);
+  }
+  function toggleTodoDone(itemId, meetingId, todoId){
+    const p = getCurrentProject();
+    const item = p.items.find(i => i.id === itemId);
+    const meeting = item.meetings.find(m => m.id === meetingId);
+    const todo = meeting.todos.find(t => t.id === todoId);
+    todo.done = !todo.done;
+    openItems.add(itemId);
+    renderDetail();
+    document.getElementById('row-' + itemId).classList.add('open');
+    saveProject(p);
+  }
+
+  function addTodoRow(itemId){
+    const container = document.getElementById('todo-rows-' + itemId);
+    const row = document.createElement('div');
+    row.className = 'todo-row';
+    row.innerHTML = `
+      <input type="text" class="tr-text" placeholder="待辦事項">
+      <input type="text" class="tr-owner" placeholder="負責人">
+      <input type="date" class="tr-due">
+      <button type="button" class="todo-row-del" onclick="this.parentElement.remove()">✕</button>
+    `;
+    container.appendChild(row);
+  }
+
+  // ---------- Google Drive upload ----------
+  async function uploadToDrive(file){
+    if(!driveAccessToken){ throw new Error('缺少 Drive 上傳權限,請登出後重新登入一次'); }
+    const metadata = { name: file.name, mimeType: file.type };
+    const form = new FormData();
+    form.append('metadata', new Blob([JSON.stringify(metadata)], { type: 'application/json' }));
+    form.append('file', file);
+    const res = await fetch('https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart&fields=id', {
+      method: 'POST',
+      headers: { Authorization: 'Bearer ' + driveAccessToken },
+      body: form
+    });
+    if(res.status === 401){ throw new Error('上傳權限已過期,請登出後重新登入一次'); }
+    const data = await res.json();
+    if(!data.id) throw new Error('上傳失敗');
+    await fetch(`https://www.googleapis.com/drive/v3/files/${data.id}/permissions`, {
+      method: 'POST',
+      headers: { Authorization: 'Bearer ' + driveAccessToken, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ role: 'reader', type: 'anyone' })
+    });
+    return { id: data.id, url: `https://drive.google.com/thumbnail?id=${data.id}&sz=w1000` };
+  }
+
+  async function handleMeetingPhotoSelect(itemId, event){
+    const files = Array.from(event.target.files);
+    const grid = document.getElementById('form-photo-grid-' + itemId);
+    for(const file of files){
+      const placeholder = document.createElement('div');
+      placeholder.className = 'photo-thumb uploading';
+      placeholder.textContent = '上傳中';
+      grid.appendChild(placeholder);
+      try{
+        const ph = await uploadToDrive(file);
+        placeholder.className = 'photo-thumb';
+        placeholder.dataset.fileId = ph.id;
+        placeholder.dataset.url = ph.url;
+        placeholder.innerHTML = `<img src="${ph.url}" onclick="openLightbox(this.src)"><button type="button" class="del-btn" onclick="event.stopPropagation(); this.parentElement.remove()">✕</button>`;
+      } catch(err){
+        placeholder.remove();
+        alert(err.message);
+      }
+    }
+    event.target.value = '';
+  }
+
+  async function handleItemPhotoSelect(itemId, event){
+    const files = Array.from(event.target.files);
+    const p = getCurrentProject();
+    const item = p.items.find(i => i.id === itemId);
+    if(!item.photos) item.photos = [];
+    const grid = document.getElementById('item-photo-grid-' + itemId);
+    for(const file of files){
+      const placeholder = document.createElement('div');
+      placeholder.className = 'photo-thumb uploading';
+      placeholder.textContent = '上傳中';
+      if(grid.querySelector('.empty-note')) grid.innerHTML = '<div class="photo-grid"></div>';
+      const container = grid.querySelector('.photo-grid') || grid;
+      container.appendChild(placeholder);
+      try{
+        const ph = await uploadToDrive(file);
+        item.photos.push(ph);
+        document.getElementById('item-photo-grid-' + itemId).innerHTML = photoGridHTML(item.photos, 'item', itemId);
+        saveProject(p);
+      } catch(err){
+        placeholder.remove();
+        alert(err.message);
+      }
+    }
+    event.target.value = '';
+  }
+
+  function deletePhoto(kind, itemId, meetingId, idx){
+    const p = getCurrentProject();
+    const item = p.items.find(i => i.id === itemId);
+    if(kind === 'item'){
+      item.photos.splice(idx, 1);
+      document.getElementById('item-photo-grid-' + itemId).innerHTML = item.photos.length ? photoGridHTML(item.photos, 'item', itemId) : '<div class="empty-note" style="padding:0;">尚無照片</div>';
+    } else {
+      const m = item.meetings.find(mm => mm.id === meetingId);
+      m.photos.splice(idx, 1);
+      openItems.add(itemId);
+      renderDetail();
+      document.getElementById('row-' + itemId).classList.add('open');
+    }
+    saveProject(p);
+  }
+
+  function saveMeeting(itemId){
+    const p = getCurrentProject();
+    const item = p.items.find(i => i.id === itemId);
+    const date = document.getElementById('mf-date-' + itemId).value;
+    const content = document.getElementById('mf-content-' + itemId).value.trim();
+    const attendees = document.getElementById('mf-attendees-' + itemId).value.trim();
+    if(!date || !content){ alert('請至少填寫日期與會議內容'); return; }
+
+    const todos = [];
+    document.querySelectorAll('#todo-rows-' + itemId + ' .todo-row').forEach(row => {
+      const text = row.querySelector('.tr-text').value.trim();
+      if(!text) return;
+      todos.push({ id: uid(), text, owner: row.querySelector('.tr-owner').value.trim(), due: row.querySelector('.tr-due').value, done: false });
+    });
+
+    const photos = [];
+    document.querySelectorAll('#form-photo-grid-' + itemId + ' .photo-thumb').forEach(thumb => {
+      if(thumb.dataset.fileId) photos.push({ id: thumb.dataset.fileId, url: thumb.dataset.url });
+    });
+
+    if(!item.meetings) item.meetings = [];
+    item.meetings.push({ id: uid(), date, content, attendees, todos, photos });
+    openForms.delete(itemId);
+    openItems.add(itemId);
+    renderDetail();
+    document.getElementById('row-' + itemId).classList.add('open');
+    saveProject(p);
+  }
+
+  function openNewItemModal(){
+    const p = getCurrentProject();
+    document.getElementById('ni-name').value = '';
+    document.getElementById('ni-title').textContent = p.type === 'task' ? '新增任務' : '新增版本';
+    document.getElementById('ni-name-label').textContent = p.type === 'task' ? '任務名稱' : '版本名稱';
+    document.getElementById('ni-date-fields').style.display = p.type === 'task' ? 'block' : 'none';
+    if(p.type === 'task'){
+      document.getElementById('ni-start').value = new Date().toISOString().slice(0,10);
+      document.getElementById('ni-due').value = '';
+    }
+    document.getElementById('modal-new-item').classList.add('open');
+  }
+  function createItem(){
+    const p = getCurrentProject();
+    const name = document.getElementById('ni-name').value.trim();
+    if(!name){ alert('請輸入名稱'); return; }
+    const item = { id: uid(), name, photos: [], confirmedEntries: [], meetings: [] };
+    if(p.type === 'task'){
+      item.start = document.getElementById('ni-start').value;
+      item.due = document.getElementById('ni-due').value;
+    }
+    if(!p.items) p.items = [];
+    p.items.push(item);
+    closeModal('modal-new-item');
+    renderDetail();
+    saveProject(p);
+  }
+
+  function closeModal(id){ document.getElementById(id).classList.remove('open'); }
+  function openLightbox(src){ document.getElementById('lightbox-img').src = src; document.getElementById('lightbox-overlay').classList.add('open'); }
+  function closeLightbox(){ document.getElementById('lightbox-overlay').classList.remove('open'); }
+
+  // ---------- todo overview ----------
+  function renderTodoOverview(){
+    const grouped = {}; const order = [];
+    projects.forEach(p => (p.items||[]).forEach(item => (item.meetings||[]).forEach(m => (m.todos || []).forEach(t => {
+      if(!t.done){
+        if(!grouped[p.name]){ grouped[p.name] = []; order.push(p.name); }
+        grouped[p.name].push({ t, itemName: item.name, projectId: p.id, itemId: item.id, meetingId: m.id });
+      }
+    }))));
+
+    const listEl = document.getElementById('todo-overview-list');
+    listEl.innerHTML = order.length ? order.map(pname => `
+      <div class="material-group-title">${escapeHTML(pname)}</div>
+      ${grouped[pname].map(r => `
+        <div class="todo-overview-row">
+          <input type="checkbox" onchange="toggleTodoDoneFromOverview('${r.projectId}','${r.itemId}','${r.meetingId}','${r.t.id}')">
+          <div style="flex:1;">
+            <div class="todo-overview-text">${escapeHTML(r.t.text)}</div>
+            <div class="todo-overview-context">${escapeHTML(r.itemName)}${r.t.owner ? ' · ' + escapeHTML(r.t.owner) : ''}${r.t.due ? ' · 期限 ' + r.t.due : ''}</div>
+          </div>
+        </div>
+      `).join('')}
+    `).join('') : '<div class="empty-note">目前沒有未完成的待辦事項,做得好。</div>';
+
+    const stEl = document.getElementById('standalone-todo-list');
+    stEl.innerHTML = standaloneTodos.length ? standaloneTodos.map(t => `
+      <div class="todo-overview-row">
+        <input type="checkbox" ${t.done ? 'checked' : ''} onchange="toggleStandaloneTodo('${t.id}')">
+        <div style="flex:1;">
+          <div class="todo-overview-text" style="${t.done ? 'text-decoration:line-through;color:var(--ink-faint);' : ''}">${escapeHTML(t.text)}</div>
+          <div class="todo-overview-context">${t.owner ? escapeHTML(t.owner) : '未指定負責人'}${t.due ? ' · 期限 ' + t.due : ''}</div>
+        </div>
+        <button class="row-del" onclick="deleteStandaloneTodo('${t.id}')">✕</button>
+      </div>
+    `).join('') : '<div class="empty-note">尚無獨立待辦事項。</div>';
+  }
+  function toggleTodoDoneFromOverview(projectId, itemId, meetingId, todoId){
+    const p = projects.find(pp => pp.id === projectId);
+    const item = p.items.find(i => i.id === itemId);
+    const m = item.meetings.find(mm => mm.id === meetingId);
+    const t = m.todos.find(tt => tt.id === todoId);
+    t.done = !t.done;
+    renderTodoOverview();
+    saveProject(p);
+  }
+  function addStandaloneTodo(){
+    const text = document.getElementById('st-text').value.trim();
+    if(!text){ alert('請輸入待辦事項內容'); return; }
+    db.collection('standaloneTodos').add({
+      text, owner: document.getElementById('st-owner').value.trim(), due: document.getElementById('st-due').value, done: false
+    }).then(() => {
+      document.getElementById('st-text').value = ''; document.getElementById('st-owner').value = ''; document.getElementById('st-due').value = '';
+    }).catch(err => alert('新增失敗:' + err.message));
+  }
+  function toggleStandaloneTodo(id){
+    const t = standaloneTodos.find(tt => tt.id === id);
+    db.collection('standaloneTodos').doc(id).update({ done: !t.done }).catch(err => alert('更新失敗:' + err.message));
+  }
+  function deleteStandaloneTodo(id){
+    db.collection('standaloneTodos').doc(id).delete().catch(err => alert('刪除失敗:' + err.message));
+  }
+
+  // ---------- materials ----------
+  function populateProjectSelect(selectId, includeAllOptions){
+    let html = '';
+    if(includeAllOptions) html += '<option value="all">全部專案</option><option value="none">未指定專案</option>';
+    else html += '<option value="">不指定專案</option>';
+    html += projects.map(p => `<option value="${p.id}">${escapeHTML(p.name)}</option>`).join('');
+    document.getElementById(selectId).innerHTML = html;
+  }
+
+  function renderMaterials(){
+    populateProjectSelect('mf-project', true);
+    const filter = document.getElementById('mf-project').value || 'all';
+    let filtered = materials.filter(m => {
+      if(filter === 'none') return !m.projectId;
+      if(filter !== 'all') return m.projectId === filter;
+      return true;
+    });
+    const listEl = document.getElementById('material-list');
+    if(filtered.length === 0){ listEl.innerHTML = '<div class="empty-note">沒有符合條件的物料。</div>'; return; }
+    const groups = {};
+    filtered.forEach(m => { (groups[m.productName] = groups[m.productName] || []).push(m); });
+    listEl.innerHTML = Object.keys(groups).map(productName => `
+      <div class="material-group-title">${escapeHTML(productName)}</div>
+      ${groups[productName].map(m => {
+        const proj = projects.find(p => p.id === m.projectId);
+        return `
+        <div class="material-card">
+          <div class="material-field"><div class="lbl">供料廠商</div><div class="val">${escapeHTML(m.vendor) || '—'}</div></div>
+          <div class="material-field"><div class="lbl">料號</div><div class="val">${escapeHTML(m.partNo) || '—'}</div></div>
+          <div class="material-field"><div class="lbl">品名</div><div class="val">${escapeHTML(m.itemName) || '—'}</div></div>
+          <div class="material-field"><div class="lbl">數量</div><div class="val">${escapeHTML(m.quantity) || '—'}</div></div>
+          <div class="material-field"><div class="lbl">訂貨日期</div><div class="val">${m.orderDate || '—'}</div></div>
+          <div class="material-field"><div class="lbl">關聯專案</div><div class="val">${proj ? escapeHTML(proj.name) : '未指定'}</div></div>
+          <button class="row-del" style="margin-left:auto;" onclick="deleteMaterial('${m.id}')">✕</button>
+        </div>
+      `; }).join('')}
+    `).join('');
+  }
+  function openNewMaterialModal(){
+    ['nm-product','nm-vendor','nm-partno','nm-itemname','nm-qty','nm-orderdate'].forEach(id => document.getElementById(id).value = '');
+    populateProjectSelect('nm-project', false);
+    document.getElementById('modal-new-material').classList.add('open');
+  }
+  function createMaterial(){
+    const productName = document.getElementById('nm-product').value.trim();
+    if(!productName){ alert('請輸入產品名稱'); return; }
+    db.collection('materials').add({
+      productName,
+      vendor: document.getElementById('nm-vendor').value.trim(),
+      partNo: document.getElementById('nm-partno').value.trim(),
+      itemName: document.getElementById('nm-itemname').value.trim(),
+      quantity: document.getElementById('nm-qty').value.trim(),
+      orderDate: document.getElementById('nm-orderdate').value,
+      projectId: document.getElementById('nm-project').value || ''
+    }).then(() => closeModal('modal-new-material')).catch(err => alert('新增失敗:' + err.message));
+  }
+  function deleteMaterial(id){
+    if(!confirm('確定要刪除這筆物料嗎?')) return;
+    db.collection('materials').doc(id).delete().catch(err => alert('刪除失敗:' + err.message));
+  }
+
+  function buildMaterialsReportHTML(){
+    const filter = document.getElementById('mf-project').value || 'all';
+    let filtered = materials.filter(m => {
+      if(filter === 'none') return !m.projectId;
+      if(filter !== 'all') return m.projectId === filter;
+      return true;
+    });
+    const groups = {};
+    filtered.forEach(m => { (groups[m.productName] = groups[m.productName] || []).push(m); });
+    const generatedAt = new Date().toLocaleString('zh-TW');
+    const groupsHTML = Object.keys(groups).map(productName => `
+      <h3 style="font-size:15px;margin:18px 0 8px;border-bottom:1px solid #ddd;padding-bottom:6px;">${escapeHTML(productName)}</h3>
+      <table style="width:100%;border-collapse:collapse;font-size:12px;">
+        <tr style="text-align:left;color:#888;"><th style="padding:4px 8px 4px 0;">供料廠商</th><th style="padding:4px 8px;">料號</th><th style="padding:4px 8px;">品名</th><th style="padding:4px 8px;">數量</th><th style="padding:4px 0;">訂貨日期</th></tr>
+        ${groups[productName].map(m => `
+          <tr style="border-top:1px solid #eee;">
+            <td style="padding:6px 8px 6px 0;">${escapeHTML(m.vendor) || '—'}</td>
+            <td style="padding:6px 8px;">${escapeHTML(m.partNo) || '—'}</td>
+            <td style="padding:6px 8px;">${escapeHTML(m.itemName) || '—'}</td>
+            <td style="padding:6px 8px;">${escapeHTML(m.quantity) || '—'}</td>
+            <td style="padding:6px 0;">${m.orderDate || '—'}</td>
+          </tr>`).join('')}
+      </table>
+    `).join('');
+    return `<div style="font-family: 'Noto Serif TC', serif, sans-serif; color:#333; padding:8px;">
+      <h1 style="font-size:22px;margin:0 0 4px;">物料對應清單</h1>
+      <p style="font-size:12px;color:#888;margin:0 0 20px;">產生於 ${generatedAt}</p>
+      ${groupsHTML || '<p style="font-size:12px;color:#999;">目前沒有物料資料</p>'}
+    </div>`;
+  }
+  function exportMaterialsPDF(){
+    const el = document.createElement('div');
+    el.style.position = 'fixed'; el.style.left = '-9999px'; el.style.width = '760px'; el.style.background = '#fff';
+    el.innerHTML = buildMaterialsReportHTML();
+    document.body.appendChild(el);
+    html2pdf().set({ filename: '物料對應清單.pdf', margin: 12, jsPDF: { unit: 'mm', format: 'a4' } }).from(el).save().then(() => el.remove());
+  }
+  function exportMaterialsWord(){
+    const header = "<html xmlns:o='urn:schemas-microsoft-com:office:office' xmlns:w='urn:schemas-microsoft-com:office:word' xmlns='http://www.w3.org/TR/REC-html40'><head><meta charset='utf-8'><title>物料對應清單</title></head><body>";
+    const blob = new Blob(['\ufeff', header + buildMaterialsReportHTML() + '</body></html>'], { type: 'application/msword' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a'); a.href = url; a.download = '物料對應清單.doc'; a.click();
+    URL.revokeObjectURL(url);
+  }
+
+  // ---------- payments ----------
+  function renderPayments(){
+    populateProjectSelect('pf-project', true);
+    const projFilter = document.getElementById('pf-project').value || 'all';
+    const statusFilter = document.getElementById('pf-status').value || 'all';
+    let filtered = payments.filter(pay => {
+      if(projFilter === 'none' && pay.projectId) return false;
+      if(projFilter !== 'all' && projFilter !== 'none' && pay.projectId !== projFilter) return false;
+      if(statusFilter !== 'all' && pay.status !== statusFilter) return false;
+      return true;
+    });
+    const unpaidSum = payments.filter(p => p.status === 'unpaid').reduce((s,p) => s + Number(p.amount || 0), 0);
+    const paidSum = payments.filter(p => p.status === 'paid').reduce((s,p) => s + Number(p.amount || 0), 0);
+    const unpaidCount = payments.filter(p => p.status === 'unpaid').length;
+    document.getElementById('payment-stats').innerHTML = `
+      <div class="stat-card"><div class="stat-label">未付款總額</div><div class="stat-num dust">NT$ ${unpaidSum.toLocaleString()}</div></div>
+      <div class="stat-card"><div class="stat-label">未付款筆數</div><div class="stat-num">${unpaidCount}</div></div>
+      <div class="stat-card"><div class="stat-label">已付款總額</div><div class="stat-num sage">NT$ ${paidSum.toLocaleString()}</div></div>
+    `;
+    const today = new Date().toISOString().slice(0,10);
+    const list = document.getElementById('payment-list');
+    if(filtered.length === 0){ list.innerHTML = '<div class="empty-note">沒有符合條件的項目。</div>'; return; }
+    list.innerHTML = filtered.map(pay => {
+      const proj = projects.find(p => p.id === pay.projectId);
+      const overdue = pay.status === 'unpaid' && pay.dueDate && pay.dueDate < today;
+      return `
+        <div class="payment-card">
+          <div class="payment-main">
+            <div class="payment-name">${escapeHTML(pay.item)}</div>
+            <div class="payment-sub">
+              付款對象:${escapeHTML(pay.payee) || '—'} ・ 到期日:${pay.dueDate || '—'}${overdue ? '(已逾期)' : ''}
+              ${proj ? ` ・ ${escapeHTML(proj.name)}` : ' ・ 未指定專案'}
+              ${pay.status === 'paid' ? ` ・ 已付款日期:${pay.paidDate}` : ''}
+            </div>
+          </div>
+          <div class="payment-amount">NT$ ${Number(pay.amount || 0).toLocaleString()}</div>
+          <span class="status-badge ${pay.status}">${pay.status === 'paid' ? '已付款' : '未付款'}</span>
+          ${pay.status === 'unpaid' ? `
+            <div class="pay-action">
+              <input type="date" id="pay-date-${pay.id}" value="${today}">
+              <button class="ghost-btn" onclick="markPaid('${pay.id}')">確認已付款</button>
+            </div>` : ''}
+          <button class="row-del" onclick="deletePayment('${pay.id}')">✕</button>
+        </div>
+      `;
+    }).join('');
+  }
+  function openNewPaymentModal(){
+    ['np2-name','np2-amount','np2-payee','np2-due','np2-note'].forEach(id => document.getElementById(id).value = '');
+    populateProjectSelect('np2-project', false);
+    document.getElementById('modal-new-payment').classList.add('open');
+  }
+  function createPayment(){
+    const item = document.getElementById('np2-name').value.trim();
+    const amount = document.getElementById('np2-amount').value;
+    if(!item || !amount){ alert('請至少填寫項目名稱與金額'); return; }
+    db.collection('payments').add({
+      item, amount: Number(amount),
+      payee: document.getElementById('np2-payee').value.trim(),
+      dueDate: document.getElementById('np2-due').value,
+      projectId: document.getElementById('np2-project').value || '',
+      status: 'unpaid', paidDate: '',
+      note: document.getElementById('np2-note').value.trim()
+    }).then(() => closeModal('modal-new-payment')).catch(err => alert('新增失敗:' + err.message));
+  }
+  function markPaid(id){
+    const dateVal = document.getElementById('pay-date-' + id).value;
+    if(!dateVal){ alert('請選擇付款日期'); return; }
+    db.collection('payments').doc(id).update({ status: 'paid', paidDate: dateVal }).catch(err => alert('更新失敗:' + err.message));
+  }
+  function deletePayment(id){
+    if(!confirm('確定要刪除這筆對帳項目嗎?')) return;
+    db.collection('payments').doc(id).delete().catch(err => alert('刪除失敗:' + err.message));
+  }
+
+  // ---------- utils ----------
+  function escapeHTML(s){ return (s || '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
+
+  // ---------- project report export ----------
+  function buildReportHTML(){
+    const p = getCurrentProject();
+    const generatedAt = new Date().toLocaleString('zh-TW');
+    let itemsHTML = (p.items||[]).map(item => {
+      const meetingsSorted = [...(item.meetings||[])].sort((a,b) => a.date.localeCompare(b.date));
+      const dateLine = p.type === 'task' ? `<p style="margin:2px 0;color:#555;font-size:12px;">起始:${item.start || '–'}　預計完成:${item.due || '–'}</p>` : '';
+      const confirmedHTML = (item.confirmedEntries && item.confirmedEntries.length) ? `
+        <div style="margin:8px 0 12px;padding:10px 14px;background:#EDF1E9;border-left:3px solid #A6AE9B;border-radius:4px;">
+          ${item.confirmedEntries.map(e => `<p style="margin:4px 0;font-size:12.5px;"><strong>${e.type === 'task' ? '任務確認' : '廠商確認'}</strong>（${e.date}）：${e.type === 'task' ? escapeHTML(e.text) : '廠商 ' + (escapeHTML(e.vendorName) || '—') + '／品名 ' + (escapeHTML(e.productName) || '—')}</p>`).join('')}
+        </div>` : '';
+      const itemPhotosHTML = (item.photos||[]).length ? `<div style="margin:6px 0 10px;">${item.photos.map(ph => `<img src="${ph.url}" style="width:90px;height:90px;object-fit:cover;border-radius:6px;margin-right:6px;">`).join('')}</div>` : '';
+      const meetingsHTML = meetingsSorted.length ? meetingsSorted.map(m => {
+        const todosHTML = m.todos && m.todos.length ? `<ul style="margin:6px 0 0;padding-left:18px;font-size:12px;">${m.todos.map(t => `<li style="margin-bottom:2px;${t.done ? 'text-decoration:line-through;color:#999;' : ''}">${escapeHTML(t.text)}${t.owner ? '（'+escapeHTML(t.owner)+'）' : ''}${t.due ? '　期限:'+t.due : ''}${t.done ? '　已完成' : ''}</li>`).join('')}</ul>` : '';
+        const photosHTML = m.photos && m.photos.length ? `<div style="margin-top:8px;">${m.photos.map(ph => `<img src="${ph.url}" style="width:80px;height:80px;object-fit:cover;border-radius:6px;margin-right:6px;">`).join('')}</div>` : '';
+        return `<div style="margin:10px 0 10px 14px;padding:10px 14px;border-left:2px solid #8CA3B0;">
+            <p style="margin:0;font-weight:600;font-size:12.5px;">${m.date}</p>
+            <p style="margin:6px 0 0;font-size:13px;line-height:1.6;white-space:pre-wrap;">${escapeHTML(m.content)}</p>
+            <p style="margin:8px 0 0;font-size:12px;color:#666;">與會人:${escapeHTML(m.attendees) || '—'}</p>
+            ${todosHTML}${photosHTML}
+          </div>`;
+      }).join('') : '<p style="margin:6px 0 10px 14px;font-size:12px;color:#999;">尚無會議紀錄</p>';
+      return `<div style="margin-bottom:22px;">
+          <h3 style="margin:0 0 2px;font-size:15px;border-bottom:1px solid #ddd;padding-bottom:6px;">${escapeHTML(item.name)}</h3>
+          ${dateLine}${confirmedHTML}${itemPhotosHTML}${meetingsHTML}
+        </div>`;
+    }).join('');
+    return `<div style="font-family: 'Noto Serif TC', serif, sans-serif; color:#333; padding:8px;">
+        <h1 style="font-size:22px;margin:0 0 4px;">${escapeHTML(p.name)}</h1>
+        <p style="font-size:12px;color:#888;margin:0 0 24px;">彙整報告 · 產生於 ${generatedAt}</p>
+        ${itemsHTML}
+      </div>`;
+  }
+  function exportPDF(){
+    const el = document.createElement('div');
+    el.style.position = 'fixed'; el.style.left = '-9999px'; el.style.width = '760px'; el.style.background = '#fff';
+    el.innerHTML = buildReportHTML();
+    document.body.appendChild(el);
+    const p = getCurrentProject();
+    html2pdf().set({ filename: p.name + '-報告.pdf', margin: 12, jsPDF: { unit: 'mm', format: 'a4' } }).from(el).save().then(() => el.remove());
+  }
+  function exportWord(){
+    const p = getCurrentProject();
+    const header = "<html xmlns:o='urn:schemas-microsoft-com:office:office' xmlns:w='urn:schemas-microsoft-com:office:word' xmlns='http://www.w3.org/TR/REC-html40'><head><meta charset='utf-8'><title>報告</title></head><body>";
+    const blob = new Blob(['\ufeff', header + buildReportHTML() + '</body></html>'], { type: 'application/msword' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a'); a.href = url; a.download = p.name + '-報告.doc'; a.click();
+    URL.revokeObjectURL(url);
+  }
+</script>
+
+</body>
+</html>
