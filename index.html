@@ -1148,6 +1148,7 @@
               <div class="material-field"><div class="lbl">料號</div><div class="val">${escapeHTML(it.partNo) || '—'}</div></div>
               <div class="material-field"><div class="lbl">品名</div><div class="val">${escapeHTML(it.itemName) || '—'}</div></div>
               <div class="material-field"><div class="lbl">數量</div><div class="val">${escapeHTML(it.quantity) || '—'}</div></div>
+              <div class="material-field"><div class="lbl">單價</div><div class="val">${it.unitPrice ? 'NT$ ' + Number(it.unitPrice).toLocaleString() : '—'}</div></div>
               <div class="material-field"><div class="lbl">訂貨日期</div><div class="val">${it.orderDate || '—'}</div></div>
             </div>
           `).join('') || '<div class="empty-note" style="padding:0 0 6px;">尚無料號資料</div>'}
@@ -1211,6 +1212,7 @@
       <input type="text" class="ir-partno" placeholder="料號" value="${escapeAttr(p.partNo || '')}">
       <input type="text" class="ir-itemname" placeholder="品名" value="${escapeAttr(p.itemName || '')}">
       <input type="text" class="ir-qty" placeholder="數量" value="${escapeAttr(p.quantity || '')}">
+      <input type="number" class="ir-unitprice" placeholder="單價" value="${escapeAttr(p.unitPrice || '')}">
       <input type="date" class="ir-orderdate" value="${p.orderDate || ''}">
       <button type="button" class="todo-row-del" onclick="this.parentElement.remove()">✕</button>
     `;
@@ -1229,9 +1231,10 @@
         const partNo = row.querySelector('.ir-partno').value.trim();
         const itemName = row.querySelector('.ir-itemname').value.trim();
         const quantity = row.querySelector('.ir-qty').value.trim();
+        const unitPrice = row.querySelector('.ir-unitprice').value.trim();
         const orderDate = row.querySelector('.ir-orderdate').value;
-        if(!partNo && !itemName && !quantity) return;
-        items.push({ id: uid(), partNo, itemName, quantity, orderDate });
+        if(!partNo && !itemName && !quantity && !unitPrice) return;
+        items.push({ id: uid(), partNo, itemName, quantity, unitPrice, orderDate });
       });
       if(!vendor && items.length === 0) return;
       suppliers.push({ id: uid(), vendor, items });
@@ -1260,12 +1263,13 @@
       const suppliersHTML = (m.suppliers || []).map(s => `
         <p style="margin:10px 0 4px;font-size:13px;font-weight:600;">${escapeHTML(s.vendor) || '未填廠商'}</p>
         <table style="width:100%;border-collapse:collapse;font-size:12px;margin-bottom:8px;">
-          <tr style="text-align:left;color:#888;"><th style="padding:4px 8px 4px 0;">料號</th><th style="padding:4px 8px;">品名</th><th style="padding:4px 8px;">數量</th><th style="padding:4px 0;">訂貨日期</th></tr>
+          <tr style="text-align:left;color:#888;"><th style="padding:4px 8px 4px 0;">料號</th><th style="padding:4px 8px;">品名</th><th style="padding:4px 8px;">數量</th><th style="padding:4px 8px;">單價</th><th style="padding:4px 0;">訂貨日期</th></tr>
           ${(s.items || []).map(it => `
             <tr style="border-top:1px solid #eee;">
               <td style="padding:6px 8px 6px 0;">${escapeHTML(it.partNo) || '—'}</td>
               <td style="padding:6px 8px;">${escapeHTML(it.itemName) || '—'}</td>
               <td style="padding:6px 8px;">${escapeHTML(it.quantity) || '—'}</td>
+              <td style="padding:6px 8px;">${it.unitPrice ? 'NT$ ' + Number(it.unitPrice).toLocaleString() : '—'}</td>
               <td style="padding:6px 0;">${it.orderDate || '—'}</td>
             </tr>`).join('')}
         </table>
@@ -1281,10 +1285,10 @@
   }
   function exportMaterialsPDF(){
     const el = document.createElement('div');
-    el.style.position = 'fixed'; el.style.left = '-9999px'; el.style.width = '760px'; el.style.background = '#fff';
+    el.style.position = 'fixed'; el.style.top = '0'; el.style.left = '0'; el.style.zIndex = '-9999'; el.style.width = '760px'; el.style.background = '#fff';
     el.innerHTML = buildMaterialsReportHTML();
     document.body.appendChild(el);
-    html2pdf().set({ filename: '物料對應清單.pdf', margin: 12, jsPDF: { unit: 'mm', format: 'a4' } }).from(el).save().then(() => el.remove());
+    html2pdf().set({ filename: '物料對應清單.pdf', margin: 12, html2canvas: { useCORS: true }, jsPDF: { unit: 'mm', format: 'a4' } }).from(el).save().then(() => el.remove()).catch(err => { el.remove(); alert('匯出失敗:' + err.message); });
   }
   function exportMaterialsWord(){
     const header = "<html xmlns:o='urn:schemas-microsoft-com:office:office' xmlns:w='urn:schemas-microsoft-com:office:word' xmlns='http://www.w3.org/TR/REC-html40'><head><meta charset='utf-8'><title>物料對應清單</title></head><body>";
@@ -1457,11 +1461,11 @@
   }
   function exportPDF(){
     const el = document.createElement('div');
-    el.style.position = 'fixed'; el.style.left = '-9999px'; el.style.width = '760px'; el.style.background = '#fff';
+    el.style.position = 'fixed'; el.style.top = '0'; el.style.left = '0'; el.style.zIndex = '-9999'; el.style.width = '760px'; el.style.background = '#fff';
     el.innerHTML = buildReportHTML();
     document.body.appendChild(el);
     const p = getCurrentProject();
-    html2pdf().set({ filename: p.name + '-報告.pdf', margin: 12, jsPDF: { unit: 'mm', format: 'a4' } }).from(el).save().then(() => el.remove());
+    html2pdf().set({ filename: p.name + '-報告.pdf', margin: 12, html2canvas: { useCORS: true }, jsPDF: { unit: 'mm', format: 'a4' } }).from(el).save().then(() => el.remove()).catch(err => { el.remove(); alert('匯出失敗:' + err.message); });
   }
   function exportWord(){
     const p = getCurrentProject();
