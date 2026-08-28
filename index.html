@@ -156,7 +156,7 @@
   .form-actions .primary-btn{ padding: 9px 16px; font-size: 12.5px; }
 
   .todo-row{ display: flex; gap: 6px; margin-bottom: 6px; align-items: center; }
-  .todo-row input{ border: 1px solid var(--line-strong); background: var(--panel); font-size: 12px; padding: 7px 9px; border-radius: 6px; }
+  .todo-row input{ border: 1px solid var(--line-strong); background: var(--panel); font-size: 12px; padding: 7px 9px; border-radius: 6px; flex: 1; min-width: 60px; }
   .todo-row .tr-text{ flex: 2; }
   .todo-row .tr-owner{ flex: 1; }
   .todo-row .tr-due{ flex: 1; }
@@ -412,9 +412,9 @@
       <div class="form-row"><label>產品名稱</label><input id="nm-product" type="text"></div>
       <div class="form-row"><label>關聯專案</label><select id="nm-project"></select></div>
       <div class="form-row">
-        <label>供應商資訊(可新增多筆)</label>
-        <div id="material-rows"></div>
-        <button type="button" class="add-meeting-toggle" id="material-add-row-btn" onclick="addMaterialRow()">+ 新增供應商</button>
+        <label>供應商(每個供應商可再新增多筆料號/品名)</label>
+        <div id="material-suppliers"></div>
+        <button type="button" class="add-meeting-toggle" onclick="addSupplierBlock()">+ 新增供應商</button>
       </div>
       <div class="modal-actions">
         <button class="ghost-btn" onclick="closeModal('modal-new-material')">取消</button>
@@ -1128,94 +1128,110 @@
     });
     const listEl = document.getElementById('material-list');
     if(filtered.length === 0){ listEl.innerHTML = '<div class="empty-note">沒有符合條件的物料。</div>'; return; }
-    const groups = {};
-    filtered.forEach(m => { (groups[m.productName] = groups[m.productName] || []).push(m); });
-    listEl.innerHTML = Object.keys(groups).map(productName => `
-      <div class="material-group-title">${escapeHTML(productName)}</div>
-      ${groups[productName].map(m => {
-        const proj = projects.find(p => p.id === m.projectId);
-        return `
-        <div class="material-card">
-          <div class="material-field"><div class="lbl">供料廠商</div><div class="val">${escapeHTML(m.vendor) || '—'}</div></div>
-          <div class="material-field"><div class="lbl">料號</div><div class="val">${escapeHTML(m.partNo) || '—'}</div></div>
-          <div class="material-field"><div class="lbl">品名</div><div class="val">${escapeHTML(m.itemName) || '—'}</div></div>
-          <div class="material-field"><div class="lbl">數量</div><div class="val">${escapeHTML(m.quantity) || '—'}</div></div>
-          <div class="material-field"><div class="lbl">訂貨日期</div><div class="val">${m.orderDate || '—'}</div></div>
-          <div class="material-field"><div class="lbl">關聯專案</div><div class="val">${proj ? escapeHTML(proj.name) : '未指定'}</div></div>
-          <button class="row-edit" style="margin-left:auto;" onclick="openMaterialModal('${m.id}')" title="編輯">✎</button>
-          <button class="row-del" onclick="deleteMaterial('${m.id}')">✕</button>
+    listEl.innerHTML = filtered.map(m => {
+      const proj = projects.find(p => p.id === m.projectId);
+      const suppliersHTML = (m.suppliers || []).map(s => `
+        <div style="margin-bottom:10px;">
+          <div style="font-size:12.5px;font-weight:500;color:var(--ink);margin-bottom:6px;">${escapeHTML(s.vendor) || '未填廠商'}</div>
+          ${(s.items || []).map(it => `
+            <div class="material-card" style="margin-bottom:6px;">
+              <div class="material-field"><div class="lbl">料號</div><div class="val">${escapeHTML(it.partNo) || '—'}</div></div>
+              <div class="material-field"><div class="lbl">品名</div><div class="val">${escapeHTML(it.itemName) || '—'}</div></div>
+              <div class="material-field"><div class="lbl">數量</div><div class="val">${escapeHTML(it.quantity) || '—'}</div></div>
+              <div class="material-field"><div class="lbl">訂貨日期</div><div class="val">${it.orderDate || '—'}</div></div>
+            </div>
+          `).join('') || '<div class="empty-note" style="padding:0 0 6px;">尚無料號資料</div>'}
         </div>
-      `; }).join('')}
-    `).join('');
+      `).join('');
+      return `
+        <div style="margin-bottom:22px;">
+          <div class="material-group-title" style="display:flex;align-items:center;justify-content:space-between;">
+            <span>${escapeHTML(m.productName)}${proj ? ` <span style="font-size:11px;color:var(--ink-faint);font-weight:400;">· ${escapeHTML(proj.name)}</span>` : ''}</span>
+            <span><button class="row-edit" onclick="openMaterialModal('${m.id}')" title="編輯">✎</button> <button class="row-del" onclick="deleteMaterial('${m.id}')" title="刪除">✕</button></span>
+          </div>
+          ${suppliersHTML || '<div class="empty-note">尚無供應商資料</div>'}
+        </div>
+      `;
+    }).join('');
   }
+
   function openMaterialModal(materialId){
     editingMaterialId = materialId || null;
     const m = materialId ? materials.find(x => x.id === materialId) : null;
     document.getElementById('nm-product').value = m ? m.productName : '';
     populateProjectSelect('nm-project', false);
     if(m) document.getElementById('nm-project').value = m.projectId || '';
-    document.getElementById('material-rows').innerHTML = '';
-    if(m){
-      addMaterialRow({ vendor: m.vendor, partNo: m.partNo, itemName: m.itemName, quantity: m.quantity, orderDate: m.orderDate });
-      document.getElementById('material-add-row-btn').style.display = 'none';
+    document.getElementById('material-suppliers').innerHTML = '';
+    if(m && m.suppliers && m.suppliers.length){
+      m.suppliers.forEach(s => addSupplierBlock(s));
     } else {
-      addMaterialRow();
-      document.getElementById('material-add-row-btn').style.display = 'block';
+      addSupplierBlock();
     }
     document.getElementById('material-modal-title').textContent = m ? '編輯物料' : '新增物料';
     document.getElementById('modal-new-material').classList.add('open');
   }
-  function addMaterialRow(prefill){
+
+  function addSupplierBlock(prefill){
+    const container = document.getElementById('material-suppliers');
+    const block = document.createElement('div');
+    block.className = 'material-row-form';
+    block.innerHTML = `
+      <button type="button" class="material-row-del" onclick="this.parentElement.remove()">✕ 移除</button>
+      <div class="form-row"><label>供應商名稱</label><input type="text" class="mr-vendor" value="${escapeAttr((prefill && prefill.vendor) || '')}"></div>
+      <div class="form-row"><label>料號 / 品名 / 數量 / 訂貨日期</label><div class="items-container"></div></div>
+      <button type="button" class="add-meeting-toggle" onclick="addSupplierItemRow(this)">+ 新增料號項目</button>
+    `;
+    container.appendChild(block);
+    const itemsContainer = block.querySelector('.items-container');
+    if(prefill && prefill.items && prefill.items.length){
+      prefill.items.forEach(it => addItemRowTo(itemsContainer, it));
+    } else {
+      addItemRowTo(itemsContainer);
+    }
+  }
+  function addSupplierItemRow(btn){
+    const itemsContainer = btn.parentElement.querySelector('.items-container');
+    addItemRowTo(itemsContainer);
+  }
+  function addItemRowTo(container, prefill){
     const p = prefill || {};
-    const container = document.getElementById('material-rows');
     const row = document.createElement('div');
-    row.className = 'material-row-form';
+    row.className = 'todo-row';
     row.innerHTML = `
-      <button type="button" class="material-row-del" onclick="this.parentElement.remove()">✕</button>
-      <div class="form-row"><label>供料廠商</label><input type="text" class="mr-vendor" value="${escapeAttr(p.vendor || '')}"></div>
-      <div class="form-row"><label>料號</label><input type="text" class="mr-partno" value="${escapeAttr(p.partNo || '')}"></div>
-      <div class="form-row"><label>品名</label><input type="text" class="mr-itemname" value="${escapeAttr(p.itemName || '')}"></div>
-      <div class="form-row"><label>數量</label><input type="text" class="mr-qty" value="${escapeAttr(p.quantity || '')}"></div>
-      <div class="form-row"><label>訂貨日期</label><input type="date" class="mr-orderdate" value="${p.orderDate || ''}"></div>
+      <input type="text" class="ir-partno" placeholder="料號" value="${escapeAttr(p.partNo || '')}">
+      <input type="text" class="ir-itemname" placeholder="品名" value="${escapeAttr(p.itemName || '')}">
+      <input type="text" class="ir-qty" placeholder="數量" value="${escapeAttr(p.quantity || '')}">
+      <input type="date" class="ir-orderdate" value="${p.orderDate || ''}">
+      <button type="button" class="todo-row-del" onclick="this.parentElement.remove()">✕</button>
     `;
     container.appendChild(row);
   }
+
   function saveMaterial(){
     const productName = document.getElementById('nm-product').value.trim();
     if(!productName){ alert('請輸入產品名稱'); return; }
     const projectId = document.getElementById('nm-project').value || '';
-    const rows = document.querySelectorAll('#material-rows .material-row-form');
-    if(rows.length === 0){ alert('請至少新增一筆供應商資訊'); return; }
-
-    if(editingMaterialId){
-      const row = rows[0];
-      const data = {
-        productName, projectId,
-        vendor: row.querySelector('.mr-vendor').value.trim(),
-        partNo: row.querySelector('.mr-partno').value.trim(),
-        itemName: row.querySelector('.mr-itemname').value.trim(),
-        quantity: row.querySelector('.mr-qty').value.trim(),
-        orderDate: row.querySelector('.mr-orderdate').value
-      };
-      db.collection('materials').doc(editingMaterialId).update(data)
-        .then(() => { closeModal('modal-new-material'); editingMaterialId = null; }).catch(err => alert('儲存失敗:' + err.message));
-    } else {
-      const batch = db.batch();
-      let count = 0;
-      rows.forEach(row => {
-        const vendor = row.querySelector('.mr-vendor').value.trim();
-        const partNo = row.querySelector('.mr-partno').value.trim();
-        const itemName = row.querySelector('.mr-itemname').value.trim();
-        const quantity = row.querySelector('.mr-qty').value.trim();
-        const orderDate = row.querySelector('.mr-orderdate').value;
-        if(!vendor && !partNo && !itemName) return;
-        const ref = db.collection('materials').doc();
-        batch.set(ref, { productName, projectId, vendor, partNo, itemName, quantity, orderDate });
-        count++;
+    const suppliers = [];
+    document.querySelectorAll('#material-suppliers .material-row-form').forEach(block => {
+      const vendor = block.querySelector('.mr-vendor').value.trim();
+      const items = [];
+      block.querySelectorAll('.items-container .todo-row').forEach(row => {
+        const partNo = row.querySelector('.ir-partno').value.trim();
+        const itemName = row.querySelector('.ir-itemname').value.trim();
+        const quantity = row.querySelector('.ir-qty').value.trim();
+        const orderDate = row.querySelector('.ir-orderdate').value;
+        if(!partNo && !itemName && !quantity) return;
+        items.push({ id: uid(), partNo, itemName, quantity, orderDate });
       });
-      if(count === 0){ alert('請至少填寫一筆供應商資訊'); return; }
-      batch.commit().then(() => closeModal('modal-new-material')).catch(err => alert('新增失敗:' + err.message));
-    }
+      if(!vendor && items.length === 0) return;
+      suppliers.push({ id: uid(), vendor, items });
+    });
+    if(suppliers.length === 0){ alert('請至少填寫一個供應商'); return; }
+    const data = { productName, projectId, suppliers };
+    const req = editingMaterialId
+      ? db.collection('materials').doc(editingMaterialId).update(data)
+      : db.collection('materials').add(data);
+    req.then(() => { closeModal('modal-new-material'); editingMaterialId = null; }).catch(err => alert('儲存失敗:' + err.message));
   }
   function deleteMaterial(id){
     if(!confirm('確定要刪除這筆物料嗎?')) return;
@@ -1229,23 +1245,23 @@
       if(filter !== 'all') return m.projectId === filter;
       return true;
     });
-    const groups = {};
-    filtered.forEach(m => { (groups[m.productName] = groups[m.productName] || []).push(m); });
     const generatedAt = new Date().toLocaleString('zh-TW');
-    const groupsHTML = Object.keys(groups).map(productName => `
-      <h3 style="font-size:15px;margin:18px 0 8px;border-bottom:1px solid #ddd;padding-bottom:6px;">${escapeHTML(productName)}</h3>
-      <table style="width:100%;border-collapse:collapse;font-size:12px;">
-        <tr style="text-align:left;color:#888;"><th style="padding:4px 8px 4px 0;">供料廠商</th><th style="padding:4px 8px;">料號</th><th style="padding:4px 8px;">品名</th><th style="padding:4px 8px;">數量</th><th style="padding:4px 0;">訂貨日期</th></tr>
-        ${groups[productName].map(m => `
-          <tr style="border-top:1px solid #eee;">
-            <td style="padding:6px 8px 6px 0;">${escapeHTML(m.vendor) || '—'}</td>
-            <td style="padding:6px 8px;">${escapeHTML(m.partNo) || '—'}</td>
-            <td style="padding:6px 8px;">${escapeHTML(m.itemName) || '—'}</td>
-            <td style="padding:6px 8px;">${escapeHTML(m.quantity) || '—'}</td>
-            <td style="padding:6px 0;">${m.orderDate || '—'}</td>
-          </tr>`).join('')}
-      </table>
-    `).join('');
+    const groupsHTML = filtered.map(m => {
+      const suppliersHTML = (m.suppliers || []).map(s => `
+        <p style="margin:10px 0 4px;font-size:13px;font-weight:600;">${escapeHTML(s.vendor) || '未填廠商'}</p>
+        <table style="width:100%;border-collapse:collapse;font-size:12px;margin-bottom:8px;">
+          <tr style="text-align:left;color:#888;"><th style="padding:4px 8px 4px 0;">料號</th><th style="padding:4px 8px;">品名</th><th style="padding:4px 8px;">數量</th><th style="padding:4px 0;">訂貨日期</th></tr>
+          ${(s.items || []).map(it => `
+            <tr style="border-top:1px solid #eee;">
+              <td style="padding:6px 8px 6px 0;">${escapeHTML(it.partNo) || '—'}</td>
+              <td style="padding:6px 8px;">${escapeHTML(it.itemName) || '—'}</td>
+              <td style="padding:6px 8px;">${escapeHTML(it.quantity) || '—'}</td>
+              <td style="padding:6px 0;">${it.orderDate || '—'}</td>
+            </tr>`).join('')}
+        </table>
+      `).join('');
+      return `<h3 style="font-size:15px;margin:18px 0 8px;border-bottom:1px solid #ddd;padding-bottom:6px;">${escapeHTML(m.productName)}</h3>${suppliersHTML}`;
+    }).join('');
     return `<div style="font-family: 'Noto Serif TC', serif, sans-serif; color:#333; padding:8px;">
       <div style="font-family:Georgia,'Noto Serif TC',serif;font-size:18px;letter-spacing:6px;color:#6E8894;margin-bottom:10px;">CHUANHO</div>
       <h1 style="font-size:22px;margin:0 0 4px;">物料對應清單</h1>
