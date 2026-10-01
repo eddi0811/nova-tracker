@@ -76,6 +76,7 @@
   @media (max-width: 680px){ .project-grid{ grid-template-columns: 1fr; } }
   .project-card{ background: var(--panel); border-radius: var(--radius); padding: 22px 24px; cursor: pointer; box-shadow: 0 1px 2px rgba(63,74,82,0.03); transition: transform 0.12s ease; }
   .project-card:hover{ transform: translateY(-2px); }
+  .project-card.is-completed{ opacity: 0.62; }
   .type-badge{ display: inline-block; font-size: 10.5px; letter-spacing: 0.06em; padding: 3px 9px; border-radius: 999px; font-weight: 500; }
   .type-badge.task{ background: var(--blue-pale); color: var(--blue-deep); }
   .type-badge.version{ background: #E7E0D6; color: var(--clay); }
@@ -286,6 +287,13 @@
         <div class="view-head">
           <div class="view-title">我的專案</div>
           <button class="primary-btn" onclick="openNewProjectModal()">+ 新增專案</button>
+        </div>
+        <div class="filters-row">
+          <select id="proj-status-filter" onchange="renderProjectList()">
+            <option value="active">進行中</option>
+            <option value="completed">已結案</option>
+            <option value="all">全部</option>
+          </select>
         </div>
         <div class="project-grid" id="project-grid"></div>
       </div>
@@ -576,7 +584,17 @@
       grid.innerHTML = '<div class="empty-note">還沒有專案,點右上角「+ 新增專案」建立第一個。</div>';
       return;
     }
-    grid.innerHTML = projects.map(p => {
+    const statusFilter = (document.getElementById('proj-status-filter') || {}).value || 'active';
+    const visible = projects.filter(p => {
+      if(statusFilter === 'all') return true;
+      if(statusFilter === 'completed') return !!p.completed;
+      return !p.completed; // 'active'
+    });
+    if(visible.length === 0){
+      grid.innerHTML = `<div class="empty-note">${statusFilter === 'completed' ? '目前沒有已結案的專案。' : '目前沒有進行中的專案。'}</div>`;
+      return;
+    }
+    grid.innerHTML = visible.map(p => {
       const typeLabel = p.type === 'task' ? '任務追蹤' : p.type === 'paid' ? '已匯款追蹤' : '版本追蹤';
       const typeClass = p.type === 'paid' ? 'paidtype' : p.type;
       let metaLine;
@@ -584,10 +602,10 @@
         const count = (p.progress||[]).length;
         metaLine = `${p.completed ? '✓ 已結案' : '進行中'} · ${count} 筆進度紀錄`;
       } else {
-        metaLine = `${(p.items||[]).length} 個${p.type === 'task' ? '任務' : '版本'} · 建立於 ${p.createdAt}`;
+        metaLine = `${p.completed ? '✓ 已結案 · ' : ''}${(p.items||[]).length} 個${p.type === 'task' ? '任務' : '版本'} · 建立於 ${p.createdAt}`;
       }
       return `
-      <div class="project-card" onclick="openProject('${p.id}')">
+      <div class="project-card ${p.completed ? 'is-completed' : ''}" onclick="openProject('${p.id}')">
         <div style="display:flex;justify-content:space-between;align-items:flex-start;">
           <span class="type-badge ${typeClass}">${typeLabel}</span>
           <div style="display:flex;gap:8px;">
@@ -636,7 +654,8 @@
         .then(() => { closeModal('modal-new-project'); editingProjectId = null; }).catch(err => alert('儲存失敗:' + err.message));
     } else {
       db.collection('projects').add({
-        name, type: newProjType, createdAt: new Date().toISOString().slice(0,10), items: []
+        name, type: newProjType, createdAt: new Date().toISOString().slice(0,10), items: [],
+        completed: false, completedDate: ''
       }).then(ref => { closeModal('modal-new-project'); openProject(ref.id); }).catch(err => alert('建立失敗:' + err.message));
     }
   }
@@ -655,32 +674,33 @@
   }
   function getCurrentProject(){ return projects.find(p => p.id === currentProjectId); }
   function saveProject(p){
-    db.collection('projects').doc(p.id).set({ name: p.name, type: p.type, createdAt: p.createdAt, items: p.items })
-      .catch(err => alert('儲存失敗:' + err.message));
+    db.collection('projects').doc(p.id).set({
+      name: p.name, type: p.type, createdAt: p.createdAt, items: p.items,
+      completed: !!p.completed, completedDate: p.completedDate || ''
+    }).catch(err => alert('儲存失敗:' + err.message));
   }
 
   function renderDetail(){
     const p = getCurrentProject();
     if(!p){ showProjectList(); return; }
-    document.getElementById('detail-title').textContent = p.name + (p.type === 'paid' && p.completed ? '(已結案)' : '');
+    document.getElementById('detail-title').textContent = p.name + (p.completed ? '(已結案)' : '');
     const itemListEl = document.getElementById('item-list');
     const progressSectionEl = document.getElementById('progress-section');
     const addItemBtn = document.getElementById('add-item-btn');
     const completeBtn = document.getElementById('complete-toggle-btn');
+    completeBtn.style.display = 'inline-block';
+    completeBtn.textContent = p.completed ? '↺ 重新開啟' : '✓ 標記完成';
 
     if(p.type === 'paid'){
       itemListEl.style.display = 'none';
       progressSectionEl.style.display = 'block';
       addItemBtn.style.display = 'none';
-      completeBtn.style.display = 'inline-block';
-      completeBtn.textContent = p.completed ? '↺ 重新開啟' : '✓ 標記完成';
       renderProgressDetail(p);
       return;
     }
     itemListEl.style.display = 'block';
     progressSectionEl.style.display = 'none';
-    addItemBtn.style.display = 'inline-block';
-    completeBtn.style.display = 'none';
+    addItemBtn.style.display = p.completed ? 'none' : 'inline-block';
     document.getElementById('add-item-btn').textContent = p.type === 'task' ? '+ 新增任務' : '+ 新增版本';
     const list = document.getElementById('item-list');
     if(!p.items || p.items.length === 0){
