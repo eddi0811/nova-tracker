@@ -528,7 +528,9 @@
   function startListeners(){
     unsubscribers.push(db.collection('projects').onSnapshot(snap => {
       projects = snap.docs.map(d => ({ id: d.id, ...d.data() }));
-      if(currentTab === 'projects' && !currentProjectId) renderProjectList();
+      if(currentTab === 'projects'){
+        if(currentProjectId) renderDetail(); else renderProjectList();
+      }
       if(currentTab === 'todos') renderTodoOverview();
       if(currentTab === 'materials') renderMaterials();
       if(currentTab === 'payments') renderPayments();
