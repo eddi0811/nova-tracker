@@ -6,7 +6,6 @@
 <title>NOVA 專案追蹤台</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Noto+Serif+TC:wght@400;500;600&family=Inter:wght@300;400;500;600&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
-<script src="https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.13.0/firebase-app-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.13.0/firebase-auth-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.13.0/firebase-firestore-compat.js"></script>
@@ -80,6 +79,7 @@
   .type-badge{ display: inline-block; font-size: 10.5px; letter-spacing: 0.06em; padding: 3px 9px; border-radius: 999px; font-weight: 500; }
   .type-badge.task{ background: var(--blue-pale); color: var(--blue-deep); }
   .type-badge.version{ background: #E7E0D6; color: var(--clay); }
+  .type-badge.paidtype{ background: #DCE4DC; color: var(--sage); }
   .project-name{ font-size: 16px; font-weight: 600; margin: 12px 0 4px; }
   .project-meta{ font-size: 12px; color: var(--ink-soft); font-weight: 300; }
 
@@ -287,10 +287,26 @@
           <div class="detail-actions">
             <button class="ghost-btn" onclick="exportWord()">匯出 Word</button>
             <button class="ghost-btn" onclick="exportPDF()">匯出 PDF</button>
+            <button class="ghost-btn" id="complete-toggle-btn" style="display:none;" onclick="toggleProjectComplete()">—</button>
             <button class="primary-btn" id="add-item-btn" onclick="openNewItemModal()">—</button>
           </div>
         </div>
         <div id="item-list"></div>
+
+        <div id="progress-section" style="display:none;">
+          <div id="progress-banner"></div>
+          <div class="meeting-log" id="progress-timeline"></div>
+          <button class="add-meeting-toggle" id="progress-add-toggle" onclick="toggleProgressForm()">+ 新增進度</button>
+          <div class="meeting-form" id="progress-form">
+            <div class="form-row"><label>日期</label><input type="date" id="pg-date"></div>
+            <div class="form-row"><label>狀態</label><input type="text" id="pg-status" placeholder="例如:生產中、已出貨、驗收中"></div>
+            <div class="form-row"><label>進度內容</label><textarea id="pg-content" rows="3"></textarea></div>
+            <div class="form-actions">
+              <button class="primary-btn" onclick="saveProgressEntry()">儲存紀錄</button>
+              <button class="ghost-btn" onclick="toggleProgressForm()">取消</button>
+            </div>
+          </div>
+        </div>
       </div>
 
       <div id="view-todos">
@@ -547,19 +563,30 @@
       grid.innerHTML = '<div class="empty-note">還沒有專案,點右上角「+ 新增專案」建立第一個。</div>';
       return;
     }
-    grid.innerHTML = projects.map(p => `
+    grid.innerHTML = projects.map(p => {
+      const typeLabel = p.type === 'task' ? '任務追蹤' : p.type === 'paid' ? '已匯款追蹤' : '版本追蹤';
+      const typeClass = p.type === 'paid' ? 'paidtype' : p.type;
+      let metaLine;
+      if(p.type === 'paid'){
+        const count = (p.progress||[]).length;
+        metaLine = `${p.completed ? '✓ 已結案' : '進行中'} · ${count} 筆進度紀錄`;
+      } else {
+        metaLine = `${(p.items||[]).length} 個${p.type === 'task' ? '任務' : '版本'} · 建立於 ${p.createdAt}`;
+      }
+      return `
       <div class="project-card" onclick="openProject('${p.id}')">
         <div style="display:flex;justify-content:space-between;align-items:flex-start;">
-          <span class="type-badge ${p.type}">${p.type === 'task' ? '任務追蹤' : '版本追蹤'}</span>
+          <span class="type-badge ${typeClass}">${typeLabel}</span>
           <div style="display:flex;gap:8px;">
             <button class="row-edit" onclick="event.stopPropagation(); openEditProjectModal('${p.id}')" title="編輯專案名稱">✎</button>
             <button class="row-del" onclick="event.stopPropagation(); deleteProject('${p.id}')" title="刪除專案">✕</button>
           </div>
         </div>
         <div class="project-name">${escapeHTML(p.name)}</div>
-        <div class="project-meta">${(p.items||[]).length} 個${p.type === 'task' ? '任務' : '版本'} · 建立於 ${p.createdAt}</div>
+        <div class="project-meta">${metaLine}</div>
       </div>
-    `).join('');
+    `;
+    }).join('');
   }
   function showProjectList(){
     document.getElementById('view-detail').style.display = 'none';
@@ -622,7 +649,25 @@
   function renderDetail(){
     const p = getCurrentProject();
     if(!p){ showProjectList(); return; }
-    document.getElementById('detail-title').textContent = p.name;
+    document.getElementById('detail-title').textContent = p.name + (p.type === 'paid' && p.completed ? '(已結案)' : '');
+    const itemListEl = document.getElementById('item-list');
+    const progressSectionEl = document.getElementById('progress-section');
+    const addItemBtn = document.getElementById('add-item-btn');
+    const completeBtn = document.getElementById('complete-toggle-btn');
+
+    if(p.type === 'paid'){
+      itemListEl.style.display = 'none';
+      progressSectionEl.style.display = 'block';
+      addItemBtn.style.display = 'none';
+      completeBtn.style.display = 'inline-block';
+      completeBtn.textContent = p.completed ? '↺ 重新開啟' : '✓ 標記完成';
+      renderProgressDetail(p);
+      return;
+    }
+    itemListEl.style.display = 'block';
+    progressSectionEl.style.display = 'none';
+    addItemBtn.style.display = 'inline-block';
+    completeBtn.style.display = 'none';
     document.getElementById('add-item-btn').textContent = p.type === 'task' ? '+ 新增任務' : '+ 新增版本';
     const list = document.getElementById('item-list');
     if(!p.items || p.items.length === 0){
@@ -631,6 +676,90 @@
     }
     const today = new Date().toISOString().slice(0,10);
     list.innerHTML = p.items.map(item => itemRowHTML(p, item, today)).join('');
+  }
+
+  // ---------- 已匯款專案追蹤(progress timeline) ----------
+  let editingProgressId = null;
+  function renderProgressDetail(p){
+    const banner = document.getElementById('progress-banner');
+    const meta = [];
+    if(p.amount) meta.push('金額:NT$ ' + Number(p.amount).toLocaleString());
+    if(p.payee) meta.push('付款對象:' + escapeHTML(p.payee));
+    banner.innerHTML = `
+      <div class="confirmed-card">
+        <span class="status-badge ${p.completed ? 'paid' : 'unpaid'}">${p.completed ? '已結案' + (p.completedDate ? ' · ' + p.completedDate : '') : '進行中'}</span>
+        ${meta.length ? `<div class="meeting-sub" style="margin-top:8px;"><div class="val">${meta.join(' ・ ')}</div></div>` : ''}
+      </div>`;
+    const entries = [...(p.progress||[])].sort((a,b) => (a.date||'').localeCompare(b.date||''));
+    const timeline = document.getElementById('progress-timeline');
+    timeline.innerHTML = entries.length
+      ? entries.map(e => progressEntryHTML(e)).join('')
+      : '<div class="empty-note">尚無進度紀錄,點下方「+ 新增進度」開始追蹤。</div>';
+    document.getElementById('progress-add-toggle').style.display = p.completed ? 'none' : 'block';
+    document.getElementById('progress-form').classList.remove('open');
+    editingProgressId = null;
+  }
+  function progressEntryHTML(e){
+    return `
+      <div class="meeting-card">
+        <button class="meeting-edit" onclick="editProgressEntry('${e.id}')" title="編輯">✎</button>
+        <button class="meeting-del" onclick="deleteProgressEntry('${e.id}')" title="刪除">✕</button>
+        <div class="meeting-date">${e.date || '—'}</div>
+        ${e.status ? `<span class="type-badge paidtype" style="margin:4px 0 0;display:inline-block;">${escapeHTML(e.status)}</span>` : ''}
+        <div class="meeting-content" style="margin-top:8px;">${escapeHTML(e.content) || '（未填寫內容）'}</div>
+      </div>
+    `;
+  }
+  function toggleProgressForm(){
+    const form = document.getElementById('progress-form');
+    const willOpen = !form.classList.contains('open');
+    form.classList.toggle('open', willOpen);
+    if(willOpen && !editingProgressId){
+      document.getElementById('pg-date').value = new Date().toISOString().slice(0,10);
+      document.getElementById('pg-status').value = '';
+      document.getElementById('pg-content').value = '';
+    }
+    if(!willOpen) editingProgressId = null;
+  }
+  function editProgressEntry(entryId){
+    const p = getCurrentProject();
+    const e = (p.progress||[]).find(x => x.id === entryId);
+    if(!e) return;
+    editingProgressId = entryId;
+    document.getElementById('pg-date').value = e.date || '';
+    document.getElementById('pg-status').value = e.status || '';
+    document.getElementById('pg-content').value = e.content || '';
+    document.getElementById('progress-form').classList.add('open');
+  }
+  function saveProgressEntry(){
+    const p = getCurrentProject();
+    const date = document.getElementById('pg-date').value;
+    const status = document.getElementById('pg-status').value.trim();
+    const content = document.getElementById('pg-content').value.trim();
+    if(!date || !content){ alert('請至少填寫日期與進度內容'); return; }
+    const progress = [...(p.progress||[])];
+    if(editingProgressId){
+      const idx = progress.findIndex(x => x.id === editingProgressId);
+      if(idx > -1) progress[idx] = { ...progress[idx], date, status, content };
+    } else {
+      progress.push({ id: uid(), date, status, content, createdAt: Date.now() });
+    }
+    db.collection('projects').doc(p.id).update({ progress })
+      .then(() => { editingProgressId = null; document.getElementById('progress-form').classList.remove('open'); })
+      .catch(err => alert('儲存失敗:' + err.message));
+  }
+  function deleteProgressEntry(entryId){
+    if(!confirm('確定要刪除這筆進度紀錄嗎?')) return;
+    const p = getCurrentProject();
+    const progress = (p.progress||[]).filter(x => x.id !== entryId);
+    db.collection('projects').doc(p.id).update({ progress }).catch(err => alert('刪除失敗:' + err.message));
+  }
+  function toggleProjectComplete(){
+    const p = getCurrentProject();
+    const completed = !p.completed;
+    db.collection('projects').doc(p.id).update({
+      completed, completedDate: completed ? new Date().toISOString().slice(0,10) : ''
+    }).catch(err => alert('更新失敗:' + err.message));
   }
 
   function itemRowHTML(p, item, today){
@@ -1124,7 +1253,7 @@
     let html = '';
     if(includeAllOptions) html += '<option value="all">全部專案</option><option value="none">未指定專案</option>';
     else html += '<option value="">不指定專案</option>';
-    html += projects.map(p => `<option value="${p.id}">${escapeHTML(p.name)}</option>`).join('');
+    html += projects.filter(p => p.type !== 'paid').map(p => `<option value="${p.id}">${escapeHTML(p.name)}</option>`).join('');
     document.getElementById(selectId).innerHTML = html;
   }
 
@@ -1283,12 +1412,73 @@
       ${groupsHTML || '<p style="font-size:12px;color:#999;">目前沒有物料資料</p>'}
     </div>`;
   }
+  function openPrintWindow(title, bodyHTML){
+    // 使用隱藏 iframe 做列印,避免新分頁 + window.print() 的時機競爭問題
+    const old = document.getElementById('__printFrame');
+    if(old) old.remove();
+
+    const iframe = document.createElement('iframe');
+    iframe.id = '__printFrame';
+    iframe.style.position = 'fixed';
+    iframe.style.right = '0';
+    iframe.style.bottom = '0';
+    iframe.style.width = '0';
+    iframe.style.height = '0';
+    iframe.style.border = '0';
+    iframe.style.visibility = 'hidden';
+    document.body.appendChild(iframe);
+
+    const doc = iframe.contentWindow.document;
+    doc.open();
+    doc.write(`<!DOCTYPE html><html><head><meta charset="utf-8"><title>${title}</title>
+      <style>
+        @media print { @page { margin: 16mm; } }
+        body{ font-family: -apple-system, "PingFang TC", "Microsoft JhengHei", sans-serif; color:#333; }
+        img{ max-width:100%; }
+        table{ border-collapse:collapse; width:100%; }
+        td, th{ border:1px solid #ccc; padding:6px 8px; font-size:12px; }
+      </style>
+    </head><body>${bodyHTML}</body></html>`);
+    doc.close();
+
+    let printed = false;
+    function triggerPrint(){
+      if(printed) return;
+      printed = true;
+      try{
+        iframe.contentWindow.focus();
+        iframe.contentWindow.print();
+      }catch(err){
+        alert('列印失敗,請改用瀏覽器選單的「列印」功能:' + err.message);
+      }
+    }
+
+    // 等待所有圖片(含 Google Drive 圖片)載入完成後再列印,確保內容完整
+    const imgs = Array.from(doc.images || []);
+    if(imgs.length === 0){
+      // 沒有圖片,稍微延遲確保排版完成即可
+      setTimeout(triggerPrint, 250);
+    } else {
+      let loaded = 0;
+      const done = () => { loaded++; if(loaded >= imgs.length) setTimeout(triggerPrint, 150); };
+      imgs.forEach(img => {
+        if(img.complete){ done(); }
+        else { img.addEventListener('load', done); img.addEventListener('error', done); }
+      });
+      // 保險:最多等 4 秒,避免圖片一直載入不完而卡住
+      setTimeout(triggerPrint, 4000);
+    }
+
+    // 列印完成(或取消)後移除 iframe
+    let removed = false;
+    const cleanup = () => { if(removed) return; removed = true; iframe.remove(); };
+    if(iframe.contentWindow){
+      iframe.contentWindow.onafterprint = cleanup;
+    }
+    setTimeout(cleanup, 8000);
+  }
   function exportMaterialsPDF(){
-    const el = document.createElement('div');
-    el.style.position = 'fixed'; el.style.top = '0'; el.style.left = '0'; el.style.zIndex = '-9999'; el.style.width = '760px'; el.style.background = '#fff';
-    el.innerHTML = buildMaterialsReportHTML();
-    document.body.appendChild(el);
-    html2pdf().set({ filename: '物料對應清單.pdf', margin: 12, html2canvas: { useCORS: true }, jsPDF: { unit: 'mm', format: 'a4' } }).from(el).save().then(() => el.remove()).catch(err => { el.remove(); alert('匯出失敗:' + err.message); });
+    openPrintWindow('物料對應清單', buildMaterialsReportHTML());
   }
   function exportMaterialsWord(){
     const header = "<html xmlns:o='urn:schemas-microsoft-com:office:office' xmlns:w='urn:schemas-microsoft-com:office:word' xmlns='http://www.w3.org/TR/REC-html40'><head><meta charset='utf-8'><title>物料對應清單</title></head><body>";
@@ -1414,7 +1604,30 @@
   function markPaid(id){
     const dateVal = document.getElementById('pay-date-' + id).value;
     if(!dateVal){ alert('請選擇付款日期'); return; }
-    db.collection('payments').doc(id).update({ status: 'paid', paidDate: dateVal }).catch(err => alert('更新失敗:' + err.message));
+    const pay = payments.find(x => x.id === id);
+    db.collection('payments').doc(id).update({ status: 'paid', paidDate: dateVal })
+      .then(() => { if(pay) createPaidTrackingProject(pay, dateVal); })
+      .catch(err => alert('更新失敗:' + err.message));
+  }
+  function createPaidTrackingProject(pay, paidDate){
+    // 避免重複建立:若此付款項目已經有對應的追蹤專案,就不再新增
+    const exists = projects.some(p => p.type === 'paid' && p.linkedPaymentId === pay.id);
+    if(exists) return;
+    const linkedProj = projects.find(p => p.id === pay.projectId);
+    db.collection('projects').add({
+      name: pay.item + (linkedProj ? '(' + linkedProj.name + ')' : ''),
+      type: 'paid',
+      linkedPaymentId: pay.id,
+      linkedProjectId: pay.projectId || '',
+      amount: pay.amount || 0,
+      payee: pay.payee || '',
+      createdAt: new Date().toISOString().slice(0,10),
+      completed: false,
+      completedDate: '',
+      progress: [
+        { id: uid(), date: paidDate, status: '已付款', content: '已確認匯款,開始追蹤後續進度。', createdAt: Date.now() }
+      ]
+    }).catch(err => console.error('建立已匯款追蹤專案失敗', err));
   }
   function deletePayment(id){
     if(!confirm('確定要刪除這筆對帳項目嗎?')) return;
@@ -1429,6 +1642,26 @@
   function buildReportHTML(){
     const p = getCurrentProject();
     const generatedAt = new Date().toLocaleString('zh-TW');
+    if(p.type === 'paid'){
+      const entries = [...(p.progress||[])].sort((a,b) => (a.date||'').localeCompare(b.date||''));
+      const metaLine = [
+        p.amount ? '金額:NT$ ' + Number(p.amount).toLocaleString() : '',
+        p.payee ? '付款對象:' + escapeHTML(p.payee) : '',
+        p.completed ? '狀態:已結案' + (p.completedDate ? '（' + p.completedDate + '）' : '') : '狀態:進行中'
+      ].filter(Boolean).join('　');
+      const entriesHTML = entries.length ? entries.map(e => `
+        <div style="margin:10px 0 10px 14px;padding:10px 14px;border-left:2px solid #8CA3B0;">
+          <p style="margin:0;font-weight:600;font-size:12.5px;">${e.date || '—'}${e.status ? '　【' + escapeHTML(e.status) + '】' : ''}</p>
+          <p style="margin:6px 0 0;font-size:13px;line-height:1.6;white-space:pre-wrap;">${escapeHTML(e.content)}</p>
+        </div>`).join('') : '<p style="margin:6px 0 10px 14px;font-size:12px;color:#999;">尚無進度紀錄</p>';
+      return `<div style="font-family: 'Noto Serif TC', serif, sans-serif; color:#333; padding:8px;">
+          <div style="font-family:Georgia,'Noto Serif TC',serif;font-size:18px;letter-spacing:6px;color:#6E8894;margin-bottom:10px;">CHUANHO</div>
+          <h1 style="font-size:22px;margin:0 0 4px;">${escapeHTML(p.name)}</h1>
+          <p style="font-size:12px;color:#888;margin:0 0 4px;">已匯款專案追蹤報告 · 產生於 ${generatedAt}</p>
+          <p style="font-size:12.5px;color:#555;margin:0 0 20px;">${metaLine}</p>
+          ${entriesHTML}
+        </div>`;
+    }
     let itemsHTML = (p.items||[]).map(item => {
       const meetingsSorted = [...(item.meetings||[])].sort((a,b) => a.date.localeCompare(b.date));
       const dateLine = p.type === 'task' ? `<p style="margin:2px 0;color:#555;font-size:12px;">起始:${item.start || '–'}　預計完成:${item.due || '–'}</p>` : '';
@@ -1460,12 +1693,8 @@
       </div>`;
   }
   function exportPDF(){
-    const el = document.createElement('div');
-    el.style.position = 'fixed'; el.style.top = '0'; el.style.left = '0'; el.style.zIndex = '-9999'; el.style.width = '760px'; el.style.background = '#fff';
-    el.innerHTML = buildReportHTML();
-    document.body.appendChild(el);
     const p = getCurrentProject();
-    html2pdf().set({ filename: p.name + '-報告.pdf', margin: 12, html2canvas: { useCORS: true }, jsPDF: { unit: 'mm', format: 'a4' } }).from(el).save().then(() => el.remove()).catch(err => { el.remove(); alert('匯出失敗:' + err.message); });
+    openPrintWindow(p.name + '-報告', buildReportHTML());
   }
   function exportWord(){
     const p = getCurrentProject();
