@@ -196,8 +196,18 @@
   .status-badge{ font-size: 10.5px; padding: 3px 10px; border-radius: 999px; font-weight: 500; white-space: nowrap; }
   .status-badge.unpaid{ background: #F0DCD8; color: var(--dust); }
   .status-badge.paid{ background: #DCE4DC; color: var(--sage); }
+  .status-badge.partial{ background: #EDE4D0; color: #A98A3C; }
   .pay-action{ display: flex; align-items: center; gap: 6px; }
   .pay-action input[type=date]{ border: 1px solid var(--line-strong); background: var(--panel-soft); font-size: 12px; padding: 6px 8px; border-radius: 6px; }
+  .pay-action input[type=number]{ border: 1px solid var(--line-strong); background: var(--panel-soft); font-size: 12px; padding: 6px 8px; border-radius: 6px; width: 110px; }
+  .payment-progress{ font-size: 11.5px; color: var(--ink-soft); margin-top: 4px; }
+  .payment-progress .remaining{ color: var(--dust); font-weight: 600; }
+  .payment-progress-bar{ height: 5px; border-radius: 999px; background: var(--line); margin-top: 6px; overflow: hidden; min-width: 160px; }
+  .payment-progress-bar-fill{ height: 100%; background: var(--sage); border-radius: 999px; }
+  .paylog-row{ display: flex; align-items: center; gap: 10px; font-size: 11.5px; color: var(--ink-soft); padding: 4px 0; }
+  .paylog-row .paylog-amt{ font-family: 'JetBrains Mono', monospace; font-weight: 600; color: var(--blue-deep); }
+  .paylog-row .del-btn{ background: none; border: none; color: var(--ink-faint); cursor: pointer; font-size: 11px; }
+  .paylog-row .del-btn:hover{ color: var(--dust); }
   .row-del{ background: none; border: none; color: var(--ink-faint); cursor: pointer; font-size: 14px; }
   .row-del:hover{ color: var(--dust); }
 
@@ -347,6 +357,7 @@
           <select id="pf-status" onchange="renderPayments()">
             <option value="all">全部狀態</option>
             <option value="unpaid">未付款</option>
+            <option value="partial">部分付款</option>
             <option value="paid">已付款</option>
           </select>
         </div>
@@ -1489,6 +1500,18 @@
   }
 
   // ---------- payments ----------
+  function getPaidAmount(pay){
+    if(pay.payLog && pay.payLog.length) return pay.payLog.reduce((s,r) => s + Number(r.amount || 0), 0);
+    // 舊資料沒有 payLog 時的備援判斷
+    return pay.status === 'paid' ? Number(pay.amount || 0) : 0;
+  }
+  function getPayStatus(pay){
+    const paid = getPaidAmount(pay);
+    const total = Number(pay.amount || 0);
+    if(paid <= 0) return 'unpaid';
+    if(paid >= total) return 'paid';
+    return 'partial';
+  }
   function renderPayments(){
     populateProjectSelect('pf-project', true);
     const projFilter = document.getElementById('pf-project').value || 'all';
@@ -1496,15 +1519,15 @@
     let filtered = payments.filter(pay => {
       if(projFilter === 'none' && pay.projectId) return false;
       if(projFilter !== 'all' && projFilter !== 'none' && pay.projectId !== projFilter) return false;
-      if(statusFilter !== 'all' && pay.status !== statusFilter) return false;
+      if(statusFilter !== 'all' && getPayStatus(pay) !== statusFilter) return false;
       return true;
     });
-    const unpaidSum = payments.filter(p => p.status === 'unpaid').reduce((s,p) => s + Number(p.amount || 0), 0);
-    const paidSum = payments.filter(p => p.status === 'paid').reduce((s,p) => s + Number(p.amount || 0), 0);
-    const unpaidCount = payments.filter(p => p.status === 'unpaid').length;
+    const remainingSum = payments.reduce((s,p) => s + Math.max(Number(p.amount||0) - getPaidAmount(p), 0), 0);
+    const remainingCount = payments.filter(p => Math.max(Number(p.amount||0) - getPaidAmount(p), 0) > 0).length;
+    const paidSum = payments.reduce((s,p) => s + getPaidAmount(p), 0);
     document.getElementById('payment-stats').innerHTML = `
-      <div class="stat-card"><div class="stat-label">未付款總額</div><div class="stat-num dust">NT$ ${unpaidSum.toLocaleString()}</div></div>
-      <div class="stat-card"><div class="stat-label">未付款筆數</div><div class="stat-num">${unpaidCount}</div></div>
+      <div class="stat-card"><div class="stat-label">尚欠總額</div><div class="stat-num dust">NT$ ${remainingSum.toLocaleString()}</div></div>
+      <div class="stat-card"><div class="stat-label">尚未付清筆數</div><div class="stat-num">${remainingCount}</div></div>
       <div class="stat-card"><div class="stat-label">已付款總額</div><div class="stat-num sage">NT$ ${paidSum.toLocaleString()}</div></div>
     `;
     const today = new Date().toISOString().slice(0,10);
@@ -1512,8 +1535,15 @@
     if(filtered.length === 0){ list.innerHTML = '<div class="empty-note">沒有符合條件的項目。</div>'; return; }
     list.innerHTML = filtered.map(pay => {
       const proj = projects.find(p => p.id === pay.projectId);
-      const overdue = pay.status === 'unpaid' && pay.dueDate && pay.dueDate < today;
+      const status = getPayStatus(pay);
+      const total = Number(pay.amount || 0);
+      const paidAmt = getPaidAmount(pay);
+      const remaining = Math.max(total - paidAmt, 0);
+      const pct = total > 0 ? Math.min(100, Math.round(paidAmt / total * 100)) : 0;
+      const overdue = status !== 'paid' && pay.dueDate && pay.dueDate < today;
       const attachments = pay.attachments || [];
+      const payLog = pay.payLog || [];
+      const statusLabel = status === 'paid' ? '已付款' : status === 'partial' ? '部分付款' : '未付款';
       return `
         <div class="payment-card">
           <div class="payment-row">
@@ -1522,19 +1552,39 @@
               <div class="payment-sub">
                 付款對象:${escapeHTML(pay.payee) || '—'} ・ 到期日:${pay.dueDate || '—'}${overdue ? '(已逾期)' : ''}
                 ${proj ? ` ・ ${escapeHTML(proj.name)}` : ' ・ 未指定專案'}
-                ${pay.status === 'paid' ? ` ・ 已付款日期:${pay.paidDate}` : ''}
+                ${status === 'paid' ? ` ・ 已付清日期:${pay.paidDate}` : ''}
               </div>
+              <div class="payment-progress">
+                已付 NT$ ${paidAmt.toLocaleString()} / 總額 NT$ ${total.toLocaleString()}
+                ${remaining > 0 ? ` ・ <span class="remaining">尚欠 NT$ ${remaining.toLocaleString()}</span>` : ' ・ 已付清'}
+              </div>
+              <div class="payment-progress-bar"><div class="payment-progress-bar-fill" style="width:${pct}%;"></div></div>
             </div>
-            <div class="payment-amount">NT$ ${Number(pay.amount || 0).toLocaleString()}</div>
-            <span class="status-badge ${pay.status}">${pay.status === 'paid' ? '已付款' : '未付款'}</span>
-            ${pay.status === 'unpaid' ? `
+            <div class="payment-amount">NT$ ${total.toLocaleString()}</div>
+            <span class="status-badge ${status}">${statusLabel}</span>
+            ${status !== 'paid' ? `
               <div class="pay-action">
                 <input type="date" id="pay-date-${pay.id}" value="${today}">
-                <button class="ghost-btn" onclick="markPaid('${pay.id}')">確認已付款</button>
+                <input type="number" id="pay-amt-${pay.id}" placeholder="付款金額" value="${remaining || ''}">
+                <button class="ghost-btn" onclick="savePaymentRecord('${pay.id}')">登記付款</button>
               </div>` : ''}
+            ${paidAmt > 0 ? (
+              projects.some(p => p.type === 'paid' && p.linkedPaymentId === pay.id)
+                ? `<button class="ghost-btn" onclick="goToTrackingProject('${pay.id}')">查看追蹤</button>`
+                : `<button class="ghost-btn" onclick="createPaidTrackingProject(payments.find(x=>x.id==='${pay.id}'), '${pay.paidDate || today}')">+ 補建追蹤</button>`
+            ) : ''}
             <button class="row-edit" onclick="openPaymentModal('${pay.id}')" title="編輯">✎</button>
             <button class="row-del" onclick="deletePayment('${pay.id}')">✕</button>
           </div>
+          ${payLog.length ? `
+          <div class="attachment-row" style="border-top:1px dashed var(--line);">
+            ${payLog.map((r, idx) => `
+              <span class="paylog-row">
+                ${r.date || '—'} ・ <span class="paylog-amt">NT$ ${Number(r.amount||0).toLocaleString()}</span>${r.note ? '（' + escapeHTML(r.note) + '）' : ''}
+                <button class="del-btn" onclick="deletePaymentRecord('${pay.id}', ${idx})" title="刪除這筆付款紀錄">✕</button>
+              </span>
+            `).join('')}
+          </div>` : ''}
           <div class="attachment-row">
             ${attachments.map((a, idx) => `
               <span class="attachment-chip">
@@ -1593,23 +1643,72 @@
       note: document.getElementById('np2-note').value.trim()
     };
     if(editingPaymentId){
+      const pay = payments.find(x => x.id === editingPaymentId);
+      // 若總金額被改動,重新依既有付款紀錄算出目前狀態
+      const paidAmt = pay ? getPaidAmount(pay) : 0;
+      data.status = paidAmt <= 0 ? 'unpaid' : (paidAmt >= Number(data.amount||0) ? 'paid' : 'partial');
+      if(data.status !== 'paid') data.paidDate = '';
       db.collection('payments').doc(editingPaymentId).update(data)
         .then(() => { closeModal('modal-new-payment'); editingPaymentId = null; }).catch(err => alert('儲存失敗:' + err.message));
     } else {
-      data.status = 'unpaid'; data.paidDate = '';
+      data.status = 'unpaid'; data.paidDate = ''; data.payLog = [];
       db.collection('payments').add(data)
         .then(() => closeModal('modal-new-payment')).catch(err => alert('新增失敗:' + err.message));
     }
   }
-  function markPaid(id){
+  function savePaymentRecord(id){
     const dateVal = document.getElementById('pay-date-' + id).value;
+    const amtVal = Number(document.getElementById('pay-amt-' + id).value);
     if(!dateVal){ alert('請選擇付款日期'); return; }
+    if(!amtVal || amtVal <= 0){ alert('請輸入這次的付款金額'); return; }
     const pay = payments.find(x => x.id === id);
-    db.collection('payments').doc(id).update({ status: 'paid', paidDate: dateVal })
-      .then(() => { if(pay) createPaidTrackingProject(pay, dateVal); })
+    const payLog = [...(pay.payLog || [])];
+    // 若是舊資料(曾經一鍵標記已付款,但沒有付款紀錄),先把舊的全額紀錄補進去,避免重複計算
+    if(payLog.length === 0 && pay.status === 'paid' && Number(pay.amount||0) > 0){
+      payLog.push({ id: uid(), date: pay.paidDate || dateVal, amount: Number(pay.amount||0), note: '(舊資料)' });
+    }
+    payLog.push({ id: uid(), date: dateVal, amount: amtVal, note: '' });
+    const total = Number(pay.amount || 0);
+    const totalPaid = payLog.reduce((s,r) => s + Number(r.amount||0), 0);
+    const newStatus = totalPaid >= total ? 'paid' : (totalPaid > 0 ? 'partial' : 'unpaid');
+    const updateData = { payLog, status: newStatus };
+    if(newStatus === 'paid') updateData.paidDate = dateVal;
+    db.collection('payments').doc(id).update(updateData)
+      .then(() => syncTrackingProjectProgress(id, dateVal, amtVal, totalPaid, total))
       .catch(err => alert('更新失敗:' + err.message));
   }
-  function createPaidTrackingProject(pay, paidDate){
+  function deletePaymentRecord(paymentId, idx){
+    if(!confirm('確定要刪除這筆付款紀錄嗎?')) return;
+    const pay = payments.find(x => x.id === paymentId);
+    const payLog = [...(pay.payLog || [])];
+    payLog.splice(idx, 1);
+    const total = Number(pay.amount || 0);
+    const totalPaid = payLog.reduce((s,r) => s + Number(r.amount||0), 0);
+    const newStatus = totalPaid >= total ? 'paid' : (totalPaid > 0 ? 'partial' : 'unpaid');
+    const updateData = { payLog, status: newStatus };
+    if(newStatus !== 'paid') updateData.paidDate = '';
+    db.collection('payments').doc(paymentId).update(updateData).catch(err => alert('刪除失敗:' + err.message));
+  }
+  function syncTrackingProjectProgress(paymentId, date, amountThisTime, totalPaid, total){
+    const pay = payments.find(x => x.id === paymentId);
+    if(!pay) return;
+    const existing = projects.find(p => p.type === 'paid' && p.linkedPaymentId === paymentId);
+    const remaining = Math.max(total - totalPaid, 0);
+    const noteLine = `付款 NT$ ${amountThisTime.toLocaleString()},累計已付 NT$ ${totalPaid.toLocaleString()} / 總額 NT$ ${total.toLocaleString()}${remaining > 0 ? '(尚欠 NT$ ' + remaining.toLocaleString() + ')' : '(已付清)'}`;
+    if(!existing){
+      createPaidTrackingProject(pay, date, noteLine);
+    } else {
+      const progress = [...(existing.progress||[]), { id: uid(), date, status: remaining > 0 ? '部分付款' : '已付清', content: noteLine, createdAt: Date.now() }];
+      db.collection('projects').doc(existing.id).update({ progress }).catch(err => console.error('更新追蹤進度失敗', err));
+    }
+  }
+  function goToTrackingProject(paymentId){
+    const p = projects.find(x => x.type === 'paid' && x.linkedPaymentId === paymentId);
+    if(!p){ alert('找不到對應的追蹤專案'); return; }
+    switchTab('projects');
+    openProject(p.id);
+  }
+  function createPaidTrackingProject(pay, paidDate, initialNote){
     // 避免重複建立:若此付款項目已經有對應的追蹤專案,就不再新增
     const exists = projects.some(p => p.type === 'paid' && p.linkedPaymentId === pay.id);
     if(exists) return;
@@ -1625,7 +1724,7 @@
       completed: false,
       completedDate: '',
       progress: [
-        { id: uid(), date: paidDate, status: '已付款', content: '已確認匯款,開始追蹤後續進度。', createdAt: Date.now() }
+        { id: uid(), date: paidDate, status: '已付款', content: initialNote || '已確認匯款,開始追蹤後續進度。', createdAt: Date.now() }
       ]
     }).catch(err => console.error('建立已匯款追蹤專案失敗', err));
   }
