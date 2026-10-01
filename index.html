@@ -198,9 +198,12 @@
   .status-badge.unpaid{ background: #F0DCD8; color: var(--dust); }
   .status-badge.paid{ background: #DCE4DC; color: var(--sage); }
   .status-badge.partial{ background: #EDE4D0; color: #A98A3C; }
-  .pay-action{ display: flex; align-items: center; gap: 6px; }
+  .pay-action{ display: flex; align-items: flex-end; gap: 10px; flex-wrap: wrap; }
+  .pay-action-field{ display: flex; flex-direction: column; gap: 3px; }
+  .pay-action-field label{ font-size: 10px; color: var(--ink-faint); letter-spacing: 0.03em; }
   .pay-action input[type=date]{ border: 1px solid var(--line-strong); background: var(--panel-soft); font-size: 12px; padding: 6px 8px; border-radius: 6px; }
-  .pay-action input[type=number]{ border: 1px solid var(--line-strong); background: var(--panel-soft); font-size: 12px; padding: 6px 8px; border-radius: 6px; width: 110px; }
+  .pay-action input[type=number]{ border: 1.5px solid var(--blue); background: #fff; font-size: 13px; font-weight: 600; padding: 6px 8px; border-radius: 6px; width: 120px; }
+  .pay-action-hint{ font-size: 11px; color: var(--ink-faint); width: 100%; margin-top: -2px; }
   .payment-progress{ font-size: 11.5px; color: var(--ink-soft); margin-top: 4px; }
   .payment-progress .remaining{ color: var(--dust); font-weight: 600; }
   .payment-progress-bar{ height: 5px; border-radius: 999px; background: var(--line); margin-top: 6px; overflow: hidden; min-width: 160px; }
@@ -1586,9 +1589,16 @@
             <span class="status-badge ${status}">${statusLabel}</span>
             ${status !== 'paid' ? `
               <div class="pay-action">
-                <input type="date" id="pay-date-${pay.id}" value="${today}">
-                <input type="number" id="pay-amt-${pay.id}" placeholder="付款金額" value="${remaining || ''}">
-                <button class="ghost-btn" onclick="savePaymentRecord('${pay.id}')">登記付款</button>
+                <div class="pay-action-field">
+                  <label>這次付款金額</label>
+                  <input type="number" id="pay-amt-${pay.id}" placeholder="尚欠 ${remaining.toLocaleString()}">
+                </div>
+                <div class="pay-action-field">
+                  <label>付款日期</label>
+                  <input type="date" id="pay-date-${pay.id}" value="${today}">
+                </div>
+                <button class="primary-btn" onclick="savePaymentRecord('${pay.id}')">登記付款</button>
+                <div class="pay-action-hint">留空則預設登記全額 NT$ ${remaining.toLocaleString()};若只先付訂金,請在上方欄位輸入實際金額(例如 5000)</div>
               </div>` : ''}
             ${paidAmt > 0 ? (
               projects.some(p => p.type === 'paid' && p.linkedPaymentId === pay.id)
@@ -1680,10 +1690,12 @@
   }
   function savePaymentRecord(id){
     const dateVal = document.getElementById('pay-date-' + id).value;
-    const amtVal = Number(document.getElementById('pay-amt-' + id).value);
+    const amtRaw = document.getElementById('pay-amt-' + id).value;
     if(!dateVal){ alert('請選擇付款日期'); return; }
-    if(!amtVal || amtVal <= 0){ alert('請輸入這次的付款金額'); return; }
     const pay = payments.find(x => x.id === id);
+    const remainingNow = Math.max(Number(pay.amount||0) - getPaidAmount(pay), 0);
+    const amtVal = amtRaw ? Number(amtRaw) : remainingNow;
+    if(!amtVal || amtVal <= 0){ alert('請輸入這次的付款金額'); return; }
     const payLog = [...(pay.payLog || [])];
     // 若是舊資料(曾經一鍵標記已付款,但沒有付款紀錄),先把舊的全額紀錄補進去,避免重複計算
     if(payLog.length === 0 && pay.status === 'paid' && Number(pay.amount||0) > 0){
