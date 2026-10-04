@@ -130,6 +130,34 @@
   .item-progress-row{ margin: 6px 0 2px; max-width: 320px; }
   .project-progress-row{ margin-top: 10px; max-width: 420px; }
 
+  .ghost-btn-active{ background: var(--blue); color: #fff; border-color: var(--blue); }
+  .dep-badge-inline{ font-size: 10.5px; color: var(--ink-faint); background: var(--line); padding: 2px 8px; border-radius: 999px; white-space: nowrap; }
+  .dep-badge-inline.conflict{ background: #F6DDD6; color: #A8452E; font-weight: 600; }
+  .deps-checklist{ display: flex; flex-direction: column; gap: 6px; max-height: 160px; overflow-y: auto; border: 1px solid var(--line); border-radius: 8px; padding: 8px 10px; }
+  .deps-check-item{ display: flex; align-items: center; gap: 8px; font-size: 13px; cursor: pointer; }
+  .deps-check-item input{ cursor: pointer; }
+
+  .sub-view-title-row{ display: flex; align-items: center; justify-content: space-between; margin: 26px 0 12px; }
+  .sub-view-title-row .sub-view-title{ margin: 0; }
+
+  .gantt-wrap{ overflow-x: auto; padding-bottom: 6px; }
+  .gantt-axis{ position: relative; height: 22px; min-width: 640px; border-bottom: 1px solid var(--line); margin-left: 160px; }
+  .gantt-tick{ position: absolute; top: 0; bottom: 0; border-left: 1px dashed var(--line); font-size: 10.5px; color: var(--ink-faint); padding-left: 4px; white-space: nowrap; }
+  .gantt-body{ position: relative; min-width: 640px; }
+  .gantt-today-line{ position: absolute; top: 0; bottom: 0; width: 2px; background: #C9A355; z-index: 2; }
+  .gantt-row{ display: flex; align-items: center; min-height: 40px; border-bottom: 1px solid var(--line); }
+  .gantt-label{ width: 160px; flex: 0 0 160px; padding: 6px 10px 6px 0; display: flex; flex-direction: column; gap: 2px; }
+  .gantt-label-name{ font-size: 12.5px; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .gantt-label-sub{ font-size: 10px; color: var(--ink-faint); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .gantt-dep-badge{ font-size: 9.5px; color: var(--ink-faint); white-space: nowrap; }
+  .gantt-dep-badge.conflict{ color: #A8452E; font-weight: 600; }
+  .gantt-track{ position: relative; flex: 1 1 auto; height: 22px; }
+  .gantt-bar{ position: absolute; top: 0; height: 22px; border-radius: 6px; background: var(--line-strong); overflow: hidden; display: flex; align-items: center; }
+  .gantt-bar.overdue{ background: #E9CFC8; }
+  .gantt-bar.conflict{ outline: 2px solid #A8452E; }
+  .gantt-bar-fill{ position: absolute; left: 0; top: 0; bottom: 0; background: var(--blue); opacity: 0.85; }
+  .gantt-bar-pct{ position: relative; z-index: 1; font-size: 10px; color: #fff; font-weight: 600; margin-left: 6px; text-shadow: 0 1px 2px rgba(0,0,0,0.35); }
+
   .home-alert-row{ background: #FBF3E6; border-left: 3px solid #C9A355; border-radius: 6px; padding: 10px 14px; margin-bottom: 8px; cursor: pointer; display: flex; flex-wrap: wrap; gap: 4px 12px; align-items: baseline; }
   .home-alert-row:hover{ filter: brightness(0.98); }
   .home-alert-row.overdue{ background: #F3DEDA; border-left-color: var(--dust); }
@@ -353,6 +381,12 @@
         <div class="sub-view-title">全部專案</div>
         <div id="home-progress-list"></div>
 
+        <div class="sub-view-title-row">
+          <div class="sub-view-title" style="margin:0;">📊 全專案甘特圖</div>
+          <button class="ghost-btn" onclick="toggleHomeGantt()" id="home-gantt-toggle-btn">展開</button>
+        </div>
+        <div id="home-gantt-section" style="display:none;"></div>
+
         <div class="sub-view-title" id="home-calendar-section">行事曆</div>
         <div class="calendar-card">
           <div class="calendar-head">
@@ -401,7 +435,8 @@
             <div class="project-progress-row" id="detail-progress-row"></div>
           </div>
           <div class="detail-actions">
-            <button class="ghost-btn" id="overview-toggle-btn" onclick="toggleOverview()">📋 時程總覽</button>
+            <button class="ghost-btn" id="gantt-toggle-btn" onclick="setDetailView('gantt')">📊 甘特圖</button>
+            <button class="ghost-btn" id="overview-toggle-btn" onclick="setDetailView('overview')">📋 時程總覽</button>
             <button class="ghost-btn" id="overview-word-btn" onclick="exportOverviewWord()">匯出整理版 Word</button>
             <button class="ghost-btn" id="overview-pdf-btn" onclick="exportOverviewPDF()">匯出整理版 PDF</button>
             <button class="ghost-btn" onclick="exportWord()">匯出完整 Word</button>
@@ -411,6 +446,7 @@
           </div>
         </div>
         <div id="overview-section" style="display:none;"></div>
+        <div id="gantt-section" style="display:none;"></div>
         <div id="item-list"></div>
 
         <div id="progress-section" style="display:none;">
@@ -508,6 +544,10 @@
       <div id="ni-date-fields">
         <div class="form-row"><label>起始時間</label><input id="ni-start" type="date"></div>
         <div class="form-row"><label>預計完成時間</label><input id="ni-due" type="date"></div>
+      </div>
+      <div class="form-row">
+        <label>需等以下細項完成才能開始(可不選)</label>
+        <div id="ni-deps-list" class="deps-checklist"></div>
       </div>
       <div class="modal-actions">
         <button class="ghost-btn" onclick="closeModal('modal-new-item')">取消</button>
@@ -702,6 +742,7 @@
     renderHomeAlerts();
     renderHomeProgressList();
     renderHomeCalendar();
+    if(homeGanttOpen) renderHomeGantt();
   }
   function buildAllEvents(){
     const events = [];
@@ -919,7 +960,7 @@
     switchTab('projects');
     currentProjectId = id;
     openItems = new Set(); openForms = new Set();
-    showingOverview = false;
+    detailView = 'list';
     document.getElementById('view-projects').style.display = 'none';
     document.getElementById('view-detail').style.display = 'block';
     renderDetail();
@@ -932,9 +973,9 @@
     }).catch(err => alert('儲存失敗:' + err.message));
   }
 
-  let showingOverview = false;
-  function toggleOverview(){
-    showingOverview = !showingOverview;
+  let detailView = 'list'; // 'list' | 'overview' | 'gantt'
+  function setDetailView(view){
+    detailView = (detailView === view) ? 'list' : view;
     renderDetail();
   }
   function renderDetail(){
@@ -945,9 +986,11 @@
     const itemListEl = document.getElementById('item-list');
     const progressSectionEl = document.getElementById('progress-section');
     const overviewSectionEl = document.getElementById('overview-section');
+    const ganttSectionEl = document.getElementById('gantt-section');
     const addItemBtn = document.getElementById('add-item-btn');
     const completeBtn = document.getElementById('complete-toggle-btn');
     const overviewToggleBtn = document.getElementById('overview-toggle-btn');
+    const ganttToggleBtn = document.getElementById('gantt-toggle-btn');
     const overviewWordBtn = document.getElementById('overview-word-btn');
     const overviewPdfBtn = document.getElementById('overview-pdf-btn');
     completeBtn.style.display = 'inline-block';
@@ -956,9 +999,11 @@
     if(p.type === 'paid'){
       itemListEl.style.display = 'none';
       overviewSectionEl.style.display = 'none';
+      ganttSectionEl.style.display = 'none';
       progressSectionEl.style.display = 'block';
       addItemBtn.style.display = 'none';
       overviewToggleBtn.style.display = 'none';
+      ganttToggleBtn.style.display = 'none';
       overviewWordBtn.style.display = 'none';
       overviewPdfBtn.style.display = 'none';
       renderProgressDetail(p);
@@ -967,20 +1012,31 @@
 
     progressSectionEl.style.display = 'none';
     overviewToggleBtn.style.display = 'inline-block';
+    ganttToggleBtn.style.display = 'inline-block';
     overviewWordBtn.style.display = 'inline-block';
     overviewPdfBtn.style.display = 'inline-block';
+    overviewToggleBtn.classList.toggle('ghost-btn-active', detailView === 'overview');
+    ganttToggleBtn.classList.toggle('ghost-btn-active', detailView === 'gantt');
 
-    if(showingOverview){
-      overviewToggleBtn.textContent = '📄 返回明細';
+    if(detailView === 'overview'){
       itemListEl.style.display = 'none';
+      ganttSectionEl.style.display = 'none';
       overviewSectionEl.style.display = 'block';
       addItemBtn.style.display = 'none';
       renderOverview(p);
       return;
     }
-    overviewToggleBtn.textContent = '📋 時程總覽';
+    if(detailView === 'gantt'){
+      itemListEl.style.display = 'none';
+      overviewSectionEl.style.display = 'none';
+      ganttSectionEl.style.display = 'block';
+      addItemBtn.style.display = 'none';
+      renderProjectGantt(p);
+      return;
+    }
     itemListEl.style.display = 'block';
     overviewSectionEl.style.display = 'none';
+    ganttSectionEl.style.display = 'none';
     addItemBtn.style.display = p.completed ? 'none' : 'inline-block';
     document.getElementById('add-item-btn').textContent = p.type === 'task' ? '+ 新增任務' : '+ 新增版本';
     const list = document.getElementById('item-list');
@@ -1141,8 +1197,11 @@
 
   function itemRowHTML(p, item, today){
     const progress = getItemProgress(item);
+    const itemsById = {}; (p.items || []).forEach(i => { itemsById[i.id] = i; });
+    const depInfo = getItemDepInfo(item, itemsById);
     const dateInfo = (item.start || item.due)
       ? `<span class="item-dates ${progress && progress.overdue ? 'overdue' : ''}">${item.start || '–'} → ${item.due || '–'}${progress && progress.overdue ? ' 逾期' : ''}</span>` : '';
+    const depBadge = depInfo ? `<span class="dep-badge-inline ${depInfo.conflict ? 'conflict' : ''}">${depInfo.conflict ? '⚠️' : '⏳'} 等:${escapeHTML(depInfo.names.join('、'))}</span>` : '';
     const meetingsSorted = [...(item.meetings||[])].sort((a,b) => a.date.localeCompare(b.date));
     const isOpen = openItems.has(item.id);
     const formOpen = openForms.has(item.id);
@@ -1157,6 +1216,7 @@
           <span class="chevron">▸</span>
           <span class="item-title">${escapeHTML(item.name)}</span>
           ${dateInfo}
+          ${depBadge}
           <span class="item-count">${(item.meetings||[]).length} 則會議紀錄</span>
           <button class="row-edit" onclick="event.stopPropagation(); openEditItemModal('${item.id}')" title="編輯名稱/日期">✎</button>
           <button class="item-del" onclick="event.stopPropagation(); deleteItem('${item.id}')" title="刪除">✕</button>
@@ -1587,6 +1647,20 @@
   }
 
   let editingItemId = null;
+  function renderDepsChecklist(p, excludeItemId, checkedIds){
+    const others = (p.items || []).filter(i => i.id !== excludeItemId);
+    const el = document.getElementById('ni-deps-list');
+    if(others.length === 0){
+      el.innerHTML = `<div class="empty-note" style="padding:2px 0;">目前沒有其他細項</div>`;
+      return;
+    }
+    el.innerHTML = others.map(i => `
+      <label class="deps-check-item">
+        <input type="checkbox" value="${i.id}" ${checkedIds.includes(i.id) ? 'checked' : ''}>
+        <span>${escapeHTML(i.name)}</span>
+      </label>
+    `).join('');
+  }
   function openNewItemModal(){
     const p = getCurrentProject();
     editingItemId = null;
@@ -1595,6 +1669,7 @@
     document.getElementById('ni-name-label').textContent = p.type === 'task' ? '任務名稱' : '版本名稱';
     document.getElementById('ni-start').value = new Date().toISOString().slice(0,10);
     document.getElementById('ni-due').value = '';
+    renderDepsChecklist(p, null, []);
     document.getElementById('modal-new-item').classList.add('open');
   }
   function openEditItemModal(itemId){
@@ -1607,6 +1682,7 @@
     document.getElementById('ni-name-label').textContent = p.type === 'task' ? '任務名稱' : '版本名稱';
     document.getElementById('ni-start').value = item.start || '';
     document.getElementById('ni-due').value = item.due || '';
+    renderDepsChecklist(p, item.id, item.dependsOn || []);
     document.getElementById('modal-new-item').classList.add('open');
   }
   function createItem(){
@@ -1615,12 +1691,13 @@
     if(!name){ alert('請輸入名稱'); return; }
     const start = document.getElementById('ni-start').value;
     const due = document.getElementById('ni-due').value;
+    const dependsOn = Array.from(document.querySelectorAll('#ni-deps-list input[type=checkbox]:checked')).map(el => el.value);
     if(editingItemId){
       const item = p.items.find(i => i.id === editingItemId);
-      item.name = name; item.start = start; item.due = due;
+      item.name = name; item.start = start; item.due = due; item.dependsOn = dependsOn;
       editingItemId = null;
     } else {
-      const item = { id: uid(), name, start, due, photos: [], confirmedEntries: [], pendingDecisions: [], meetings: [] };
+      const item = { id: uid(), name, start, due, dependsOn, photos: [], confirmedEntries: [], pendingDecisions: [], meetings: [] };
       if(!p.items) p.items = [];
       p.items.push(item);
     }
@@ -2219,6 +2296,127 @@
     const fillCls = progress.overdue ? 'progress-bar-fill overdue' : 'progress-bar-fill';
     return `<div class="${cls}"><div class="${fillCls}" style="width:${progress.pct}%;"></div></div>
       <div class="progress-pct ${progress.overdue ? 'overdue' : ''}">${progress.pct}%${progress.overdue ? ' · 逾期' : ''}</div>`;
+  }
+
+  // ---------- 甘特圖 ----------
+  function getItemDepInfo(item, itemsById){
+    const depIds = item.dependsOn || [];
+    const deps = depIds.map(id => itemsById[id]).filter(Boolean);
+    if(deps.length === 0) return null;
+    let conflict = false;
+    if(item.start){
+      deps.forEach(d => { if(d.due && d.due > item.start) conflict = true; });
+    }
+    return { names: deps.map(d => d.name), conflict };
+  }
+  function computeGanttRange(items){
+    const dates = [];
+    items.forEach(i => { if(i.start) dates.push(i.start); if(i.due) dates.push(i.due); });
+    if(dates.length === 0) return null;
+    dates.sort();
+    const min = new Date(dates[0] + 'T00:00:00');
+    const max = new Date(dates[dates.length - 1] + 'T00:00:00');
+    min.setDate(min.getDate() - 1);
+    max.setDate(max.getDate() + 1);
+    if((max - min) < 7 * 86400000) max.setTime(min.getTime() + 7 * 86400000);
+    return { min, max };
+  }
+  function ganttDateToPct(d, range){
+    return Math.max(0, Math.min(100, (d - range.min) / (range.max - range.min) * 100));
+  }
+  function ganttAxisHTML(range){
+    const totalDays = Math.round((range.max - range.min) / 86400000);
+    const step = Math.max(1, Math.ceil(totalDays / 6));
+    const ticks = [];
+    for(let d = 0; d <= totalDays; d += step){
+      const dt = new Date(range.min.getTime() + d * 86400000);
+      const pct = ganttDateToPct(dt, range);
+      ticks.push(`<div class="gantt-tick" style="left:${pct}%"><span>${dt.getMonth()+1}/${dt.getDate()}</span></div>`);
+    }
+    return `<div class="gantt-axis">${ticks.join('')}</div>`;
+  }
+  function ganttTodayLineHTML(range){
+    const today = new Date(new Date().toISOString().slice(0,10) + 'T00:00:00');
+    if(today < range.min || today > range.max) return '';
+    const frac = ganttDateToPct(today, range) / 100;
+    return `<div class="gantt-today-line" style="left:calc(160px + (100% - 160px) * ${frac})" title="今天"></div>`;
+  }
+  function ganttRowHTML(item, range, itemsById, labelPrefix){
+    const progress = getItemProgress(item);
+    const leftPct = ganttDateToPct(new Date(item.start + 'T00:00:00'), range);
+    const rightPct = ganttDateToPct(new Date(item.due + 'T00:00:00'), range);
+    const widthPct = Math.max(1.5, rightPct - leftPct);
+    const depInfo = getItemDepInfo(item, itemsById);
+    const barClass = depInfo && depInfo.conflict ? 'conflict' : (progress && progress.overdue ? 'overdue' : '');
+    const titleParts = [`${item.name}(${item.start} → ${item.due})`];
+    if(depInfo) titleParts.push((depInfo.conflict ? '⚠️ 衝突,尚未等待完成:' : '需等完成:') + depInfo.names.join('、'));
+    return `
+      <div class="gantt-row">
+        <div class="gantt-label">
+          ${labelPrefix ? `<span class="gantt-label-sub">${escapeHTML(labelPrefix)}</span>` : ''}
+          <span class="gantt-label-name">${escapeHTML(item.name)}</span>
+          ${depInfo ? `<span class="gantt-dep-badge ${depInfo.conflict ? 'conflict' : ''}">${depInfo.conflict ? '⚠️' : '⏳'} 等:${escapeHTML(depInfo.names.join('、'))}</span>` : ''}
+        </div>
+        <div class="gantt-track">
+          <div class="gantt-bar ${barClass}" style="left:${leftPct}%;width:${widthPct}%;" title="${escapeAttr(titleParts.join(' · '))}">
+            <div class="gantt-bar-fill" style="width:${progress ? progress.pct : 0}%;"></div>
+            <span class="gantt-bar-pct">${progress ? progress.pct + '%' : ''}</span>
+          </div>
+        </div>
+      </div>`;
+  }
+  function renderProjectGantt(p){
+    const el = document.getElementById('gantt-section');
+    const items = (p.items || []).filter(i => i.start && i.due);
+    if(items.length === 0){
+      el.innerHTML = `<div class="empty-note">細項尚未填寫開始與完成日期,無法顯示甘特圖。</div>`;
+      return;
+    }
+    const itemsById = {};
+    (p.items || []).forEach(i => { itemsById[i.id] = i; });
+    const range = computeGanttRange(items);
+    el.innerHTML = `
+      <div class="gantt-wrap">
+        ${ganttAxisHTML(range)}
+        <div class="gantt-body">
+          ${ganttTodayLineHTML(range)}
+          ${items.map(item => ganttRowHTML(item, range, itemsById)).join('')}
+        </div>
+      </div>`;
+  }
+  let homeGanttOpen = false;
+  function toggleHomeGantt(){
+    homeGanttOpen = !homeGanttOpen;
+    document.getElementById('home-gantt-section').style.display = homeGanttOpen ? 'block' : 'none';
+    document.getElementById('home-gantt-toggle-btn').textContent = homeGanttOpen ? '收合' : '展開';
+    if(homeGanttOpen) renderHomeGantt();
+  }
+  function renderHomeGantt(){
+    const el = document.getElementById('home-gantt-section');
+    const rows = [];
+    const allItems = [];
+    projects.filter(p => !p.completed && (p.type === 'task' || p.type === 'version')).forEach(p => {
+      const itemsById = {};
+      (p.items || []).forEach(i => { itemsById[i.id] = i; });
+      (p.items || []).filter(i => i.start && i.due).forEach(item => {
+        allItems.push(item);
+        rows.push({ item, itemsById, projectName: p.name });
+      });
+    });
+    if(allItems.length === 0){
+      el.innerHTML = `<div class="empty-note">目前沒有已排定起訖時間的細項可顯示。</div>`;
+      return;
+    }
+    rows.sort((a,b) => a.item.start.localeCompare(b.item.start));
+    const range = computeGanttRange(allItems);
+    el.innerHTML = `
+      <div class="gantt-wrap">
+        ${ganttAxisHTML(range)}
+        <div class="gantt-body">
+          ${ganttTodayLineHTML(range)}
+          ${rows.map(r => ganttRowHTML(r.item, range, r.itemsById, r.projectName)).join('')}
+        </div>
+      </div>`;
   }
 
   // ---------- project report export ----------
