@@ -85,6 +85,7 @@
   .project-meta{ font-size: 12px; color: var(--ink-soft); font-weight: 300; }
 
   #view-detail{ display: none; }
+  #view-projects{ display: none; }
   .back-link{ background: none; border: none; color: var(--ink-soft); font-size: 12.5px; cursor: pointer; padding: 0; margin-bottom: 14px; }
   .back-link:hover{ color: var(--blue-deep); }
   .detail-actions{ display: flex; gap: 10px; flex-wrap: wrap; }
@@ -107,6 +108,62 @@
   .confirmed-section{ margin-bottom: 18px; padding-bottom: 16px; border-bottom: 1px solid var(--line); }
   .section-head-row{ display: flex; align-items: center; justify-content: space-between; margin-bottom: 8px; }
   .confirmed-card{ background: var(--sage-bg); border-left: 3px solid var(--sage); border-radius: 6px; padding: 11px 14px; margin-bottom: 8px; position: relative; }
+  .decision-card{ background: #FBF3E6; border-left: 3px solid #C9A355; border-radius: 6px; padding: 11px 14px; margin-bottom: 8px; position: relative; }
+  .decision-badge{ font-size: 10.5px; font-weight: 600; color: #A98A3C; letter-spacing: 0.03em; }
+  .decision-tag{ display: inline-block; font-size: 10px; background: #F0DCB8; color: #8A6A1F; padding: 2px 8px; border-radius: 999px; margin-left: 8px; }
+  .decision-bullets{ margin: 6px 0 0; padding-left: 18px; font-size: 12.5px; line-height: 1.7; color: var(--ink-soft); }
+  .overview-sub-title{ font-size: 15px; font-weight: 600; margin: 22px 0 10px; }
+  .overview-sub-title:first-child{ margin-top: 0; }
+  .overview-table{ width: 100%; border-collapse: collapse; margin-bottom: 8px; }
+  .overview-table th{ background: var(--panel-soft); text-align: left; font-size: 12px; color: var(--ink-soft); padding: 9px 14px; border: 1px solid var(--line); font-weight: 600; }
+  .overview-table td{ font-size: 12.5px; padding: 9px 14px; border: 1px solid var(--line); vertical-align: top; }
+  .overview-table td.od{ font-family: 'JetBrains Mono', monospace; white-space: nowrap; color: var(--blue-deep); font-weight: 600; width: 110px; }
+  .overview-decision-item{ margin-bottom: 14px; }
+  .overview-decision-item .odt{ font-weight: 600; font-size: 13.5px; }
+  .overview-decision-item .decision-tag{ margin-left: 8px; }
+  .progress-bar{ height: 8px; border-radius: 999px; background: var(--line); overflow: hidden; margin-top: 6px; }
+  .progress-bar.sm{ height: 5px; margin-top: 4px; }
+  .progress-bar-fill{ height: 100%; background: var(--blue); border-radius: 999px; transition: width 0.2s ease; }
+  .progress-bar-fill.overdue{ background: var(--dust); }
+  .progress-pct{ font-size: 10.5px; color: var(--ink-faint); margin-top: 3px; font-family: 'JetBrains Mono', monospace; }
+  .progress-pct.overdue{ color: var(--dust); font-weight: 600; }
+  .item-progress-row{ margin: 6px 0 2px; max-width: 320px; }
+  .project-progress-row{ margin-top: 10px; max-width: 420px; }
+
+  .home-alert-row{ background: #FBF3E6; border-left: 3px solid #C9A355; border-radius: 6px; padding: 10px 14px; margin-bottom: 8px; cursor: pointer; display: flex; flex-wrap: wrap; gap: 4px 12px; align-items: baseline; }
+  .home-alert-row:hover{ filter: brightness(0.98); }
+  .home-alert-row.overdue{ background: #F3DEDA; border-left-color: var(--dust); }
+  .home-alert-name{ font-weight: 600; font-size: 13px; }
+  .home-alert-meta{ font-size: 11.5px; color: var(--ink-soft); }
+  .home-proj-row{ background: var(--panel); border-radius: 8px; padding: 12px 16px; margin-bottom: 8px; cursor: pointer; }
+  .home-proj-row:hover{ box-shadow: 0 1px 2px rgba(63,74,82,0.06); }
+  .home-proj-row.is-completed{ opacity: 0.6; }
+  .home-proj-row-top{ display: flex; align-items: center; gap: 10px; }
+  .home-proj-name{ font-size: 13.5px; font-weight: 500; flex: 1; }
+
+  .calendar-card{ background: var(--panel); border-radius: var(--radius); padding: 16px 18px; }
+  .calendar-head{ display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 8px; margin-bottom: 10px; }
+  .calendar-nav{ display: flex; align-items: center; gap: 10px; }
+  .calendar-label{ font-size: 14px; font-weight: 600; min-width: 90px; text-align: center; }
+  .calendar-filter-label{ font-size: 12px; color: var(--ink-soft); display: flex; align-items: center; gap: 8px; }
+  .calendar-weekdays{ display: grid; grid-template-columns: repeat(7, 1fr); font-size: 11px; color: var(--ink-faint); text-align: center; padding-bottom: 6px; }
+  .calendar-grid{ display: grid; grid-template-columns: repeat(7, 1fr); gap: 4px; }
+  .cal-cell{ min-height: 56px; border-radius: 6px; background: var(--panel-soft); padding: 5px 6px; }
+  .cal-cell.empty{ background: transparent; }
+  .cal-cell.today{ outline: 1.5px solid var(--blue); }
+  .cal-daynum{ font-size: 11px; color: var(--ink-soft); font-family: 'JetBrains Mono', monospace; }
+  .cal-dots{ display: flex; flex-wrap: wrap; gap: 3px; margin-top: 4px; }
+  .cal-dot{ width: 6px; height: 6px; border-radius: 50%; display: inline-block; }
+  .cal-dot-blue{ background: var(--blue); }
+  .cal-dot-sage{ background: var(--sage); }
+  .cal-dot-clay{ background: var(--clay); }
+  .cal-dot-gold{ background: #C9A355; }
+  .calendar-legend{ display: flex; gap: 16px; flex-wrap: wrap; font-size: 11px; color: var(--ink-soft); margin-top: 12px; }
+  .calendar-legend span{ display: flex; align-items: center; gap: 5px; }
+  .cal-list-row{ display: flex; align-items: baseline; gap: 10px; padding: 6px 2px; border-bottom: 1px solid var(--line); font-size: 12.5px; flex-wrap: wrap; }
+  .cal-list-date{ font-family: 'JetBrains Mono', monospace; color: var(--blue-deep); font-weight: 600; min-width: 42px; }
+  .cal-list-proj{ color: var(--ink-soft); font-size: 11.5px; }
+  .cal-list-text{ flex: 1; min-width: 120px; }
   .confirmed-badge{ display: inline-flex; align-items: center; gap: 4px; font-size: 10px; color: #6E7A63; font-weight: 600; letter-spacing: 0.04em; }
   .confirmed-text{ font-size: 13px; margin-top: 6px; line-height: 1.5; color: var(--ink); }
   .confirmed-del{ position: absolute; top: 9px; right: 10px; background: none; border: none; color: #8A9481; cursor: pointer; font-size: 12px; }
@@ -280,10 +337,45 @@
       </div>
 
       <div class="main-nav">
-        <button class="nav-tab active" id="tab-projects" onclick="switchTab('projects')">專案</button>
+        <button class="nav-tab active" id="tab-home" onclick="switchTab('home')">🏠 首頁</button>
+        <button class="nav-tab" id="tab-projects" onclick="switchTab('projects')">專案</button>
         <button class="nav-tab" id="tab-todos" onclick="switchTab('todos')">待辦總覽</button>
         <button class="nav-tab" id="tab-materials" onclick="switchTab('materials')">物料對應</button>
         <button class="nav-tab" id="tab-payments" onclick="switchTab('payments')">對帳區</button>
+      </div>
+
+      <div id="view-home">
+        <div class="view-head"><div class="view-title">首頁總覽</div></div>
+
+        <div class="sub-view-title" style="margin-top:0;">⚠️ 需要留意</div>
+        <div id="home-alert-list"></div>
+
+        <div class="sub-view-title">全部專案</div>
+        <div id="home-progress-list"></div>
+
+        <div class="sub-view-title" id="home-calendar-section">行事曆</div>
+        <div class="calendar-card">
+          <div class="calendar-head">
+            <div class="calendar-nav">
+              <button class="ghost-btn" onclick="homeCalPrevMonth()">◀</button>
+              <span id="home-cal-label" class="calendar-label">—</span>
+              <button class="ghost-btn" onclick="homeCalNextMonth()">▶</button>
+            </div>
+            <div id="home-cal-filter-label" class="calendar-filter-label"></div>
+          </div>
+          <div class="calendar-weekdays">
+            <div>一</div><div>二</div><div>三</div><div>四</div><div>五</div><div>六</div><div>日</div>
+          </div>
+          <div class="calendar-grid" id="home-cal-grid"></div>
+          <div class="calendar-legend">
+            <span><span class="cal-dot cal-dot-blue"></span>細項起訖</span>
+            <span><span class="cal-dot cal-dot-sage"></span>會議</span>
+            <span><span class="cal-dot cal-dot-clay"></span>待辦期限</span>
+            <span><span class="cal-dot cal-dot-gold"></span>付款到期</span>
+          </div>
+        </div>
+        <div class="sub-view-title">本月事項一覽</div>
+        <div id="home-cal-list"></div>
       </div>
 
       <div id="view-projects">
@@ -304,14 +396,21 @@
       <div id="view-detail">
         <button class="back-link" onclick="showProjectList()">← 返回專案列表</button>
         <div class="view-head">
-          <div class="view-title" id="detail-title">—</div>
+          <div>
+            <div class="view-title" id="detail-title">—</div>
+            <div class="project-progress-row" id="detail-progress-row"></div>
+          </div>
           <div class="detail-actions">
-            <button class="ghost-btn" onclick="exportWord()">匯出 Word</button>
-            <button class="ghost-btn" onclick="exportPDF()">匯出 PDF</button>
+            <button class="ghost-btn" id="overview-toggle-btn" onclick="toggleOverview()">📋 時程總覽</button>
+            <button class="ghost-btn" id="overview-word-btn" onclick="exportOverviewWord()">匯出整理版 Word</button>
+            <button class="ghost-btn" id="overview-pdf-btn" onclick="exportOverviewPDF()">匯出整理版 PDF</button>
+            <button class="ghost-btn" onclick="exportWord()">匯出完整 Word</button>
+            <button class="ghost-btn" onclick="exportPDF()">匯出完整 PDF</button>
             <button class="ghost-btn" id="complete-toggle-btn" style="display:none;" onclick="toggleProjectComplete()">—</button>
             <button class="primary-btn" id="add-item-btn" onclick="openNewItemModal()">—</button>
           </div>
         </div>
+        <div id="overview-section" style="display:none;"></div>
         <div id="item-list"></div>
 
         <div id="progress-section" style="display:none;">
@@ -438,6 +537,19 @@
     </div>
   </div>
 
+  <div class="modal-overlay" id="modal-new-decision">
+    <div class="modal">
+      <h3>新增待確認/決定事項</h3>
+      <div class="form-row"><label>標題</label><input id="dc-title" type="text" placeholder="例如:200ML 乳液是否改成圓角瓶"></div>
+      <div class="form-row"><label>標籤(選填)</label><input id="dc-note" type="text" placeholder="例如:最急、下週決定"></div>
+      <div class="form-row"><label>說明(每行會自動變成一個項目)</label><textarea id="dc-bullets" rows="5" placeholder="樣品已寄出,下週收到須確認&#10;交期:不含開版+打樣,共6週&#10;已列入下單的數量,須等此項確認後一起定"></textarea></div>
+      <div class="modal-actions">
+        <button class="ghost-btn" onclick="closeModal('modal-new-decision')">取消</button>
+        <button class="primary-btn" onclick="createDecisionEntry()">新增</button>
+      </div>
+    </div>
+  </div>
+
   <div class="modal-overlay" id="modal-new-payment">
     <div class="modal">
       <h3 id="payment-modal-title">新增待付款項目</h3>
@@ -519,7 +631,7 @@
   // ---------- state ----------
   const uid = () => (crypto.randomUUID ? crypto.randomUUID() : 'id-' + Date.now() + '-' + Math.random().toString(36).slice(2));
   let currentProjectId = null;
-  let currentTab = 'projects';
+  let currentTab = 'home';
   let openItems = new Set();
   let openForms = new Set();
   let confirmTargetItemId = null;
@@ -539,6 +651,7 @@
   function startListeners(){
     unsubscribers.push(db.collection('projects').onSnapshot(snap => {
       projects = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+      if(currentTab === 'home') renderHome();
       if(currentTab === 'projects'){
         if(currentProjectId) renderDetail(); else renderProjectList();
       }
@@ -549,6 +662,7 @@
 
     unsubscribers.push(db.collection('payments').onSnapshot(snap => {
       payments = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+      if(currentTab === 'home') renderHome();
       if(currentTab === 'payments') renderPayments();
     }, err => console.error('payments listener', err)));
 
@@ -562,22 +676,154 @@
       if(currentTab === 'todos') renderTodoOverview();
     }, err => console.error('standaloneTodos listener', err)));
 
-    renderProjectList();
+    renderHome();
   }
   function stopListeners(){ unsubscribers.forEach(u => u()); unsubscribers = []; }
 
   // ---------- tab switching ----------
   function switchTab(tab){
     currentTab = tab;
-    ['projects','todos','materials','payments'].forEach(t => {
+    ['home','projects','todos','materials','payments'].forEach(t => {
       document.getElementById('tab-' + t).classList.toggle('active', t === tab);
       document.getElementById('view-' + t).style.display = (t === tab) ? 'block' : 'none';
     });
     document.getElementById('view-detail').style.display = 'none';
-    if(tab === 'projects'){ currentProjectId = null; renderProjectList(); }
+    if(tab === 'home'){ renderHome(); }
+    else if(tab === 'projects'){ currentProjectId = null; renderProjectList(); }
     else if(tab === 'todos'){ renderTodoOverview(); }
     else if(tab === 'materials'){ renderMaterials(); }
     else if(tab === 'payments'){ renderPayments(); }
+  }
+
+  // ---------- 首頁(進度總覽+行事曆) ----------
+  let homeCalMonth = new Date();
+  let homeFilterProjectId = null;
+  function renderHome(){
+    renderHomeAlerts();
+    renderHomeProgressList();
+    renderHomeCalendar();
+  }
+  function buildAllEvents(){
+    const events = [];
+    projects.forEach(p => {
+      if(p.type === 'paid') return;
+      (p.items||[]).forEach(item => {
+        if(item.start) events.push({ date: item.start, projectId: p.id, projectName: p.name, type: 'item-start', text: item.name + ' 開始' });
+        if(item.due) events.push({ date: item.due, projectId: p.id, projectName: p.name, type: 'item-due', text: item.name + ' 截止' });
+        (item.meetings||[]).forEach(m => {
+          if(m.date) events.push({ date: m.date, projectId: p.id, projectName: p.name, type: 'meeting', text: '會議:' + (m.content ? m.content.slice(0,24) : item.name) });
+          (m.todos||[]).forEach(t => {
+            if(!t.done && t.due) events.push({ date: t.due, projectId: p.id, projectName: p.name, type: 'todo', text: t.text + (t.owner ? '(' + t.owner + ')' : '') });
+          });
+        });
+      });
+    });
+    payments.forEach(pay => {
+      if(pay.status === 'paid' || !pay.dueDate) return;
+      const trackingProj = projects.find(x => x.type === 'paid' && x.linkedPaymentId === pay.id);
+      const linkedProj = projects.find(x => x.id === pay.projectId);
+      const projId = trackingProj ? trackingProj.id : (linkedProj ? linkedProj.id : null);
+      const projName = trackingProj ? trackingProj.name : (linkedProj ? linkedProj.name : (pay.item || '未分類付款'));
+      events.push({ date: pay.dueDate, projectId: projId, projectName: projName, type: 'payment', text: '付款到期:' + pay.item });
+    });
+    return events;
+  }
+  function renderHomeAlerts(){
+    const events = buildAllEvents();
+    const todayStr = new Date().toISOString().slice(0,10);
+    const byProject = {};
+    events.forEach(e => { if(e.projectId){ (byProject[e.projectId] = byProject[e.projectId] || []).push(e); } });
+    const rows = projects.filter(p => !p.completed).map(p => {
+      const list = (byProject[p.id]||[]).slice().sort((a,b) => a.date.localeCompare(b.date));
+      const overdue = list.filter(e => e.date < todayStr);
+      const upcoming = list.filter(e => e.date >= todayStr);
+      const soonest = overdue.length ? overdue[0] : (upcoming[0] || null);
+      return { p, soonest, isOverdue: overdue.length > 0 };
+    }).filter(r => r.soonest);
+    rows.sort((a,b) => {
+      if(a.isOverdue !== b.isOverdue) return a.isOverdue ? -1 : 1;
+      return a.soonest.date.localeCompare(b.soonest.date);
+    });
+    const top = rows.slice(0, 6);
+    const container = document.getElementById('home-alert-list');
+    if(top.length === 0){ container.innerHTML = '<div class="empty-note">目前沒有近期到期或逾期的事項,很棒。</div>'; return; }
+    container.innerHTML = top.map(r => {
+      const prog = getProjectProgress(r.p);
+      return `
+        <div class="home-alert-row ${r.isOverdue ? 'overdue' : ''}" onclick="openProject('${r.p.id}')">
+          <span class="home-alert-name">${escapeHTML(r.p.name)}</span>
+          <span class="home-alert-meta">${prog ? prog.pct + '% · ' : ''}${r.isOverdue ? '已逾期:' : '最近到期:'}${r.soonest.date} ${escapeHTML(r.soonest.text)}</span>
+        </div>
+      `;
+    }).join('');
+  }
+  function renderHomeProgressList(){
+    const container = document.getElementById('home-progress-list');
+    if(projects.length === 0){ container.innerHTML = '<div class="empty-note">還沒有專案。</div>'; return; }
+    const sorted = [...projects].sort((a,b) => (a.completed === b.completed) ? 0 : (a.completed ? 1 : -1));
+    container.innerHTML = sorted.map(p => {
+      const prog = getProjectProgress(p);
+      const typeLabel = p.type === 'task' ? '任務追蹤' : p.type === 'paid' ? '已匯款追蹤' : '版本追蹤';
+      const typeClass = p.type === 'paid' ? 'paidtype' : p.type;
+      return `
+        <div class="home-proj-row ${p.completed ? 'is-completed' : ''}" onclick="setHomeCalendarFilter('${p.id}')">
+          <div class="home-proj-row-top">
+            <span class="home-proj-name">${escapeHTML(p.name)}</span>
+            <span class="type-badge ${typeClass}">${typeLabel}</span>
+            ${p.completed ? '<span class="status-badge paid">已結案</span>' : ''}
+          </div>
+          ${progressBarHTML(prog, 'sm')}
+        </div>
+      `;
+    }).join('');
+  }
+  function renderHomeCalendar(){
+    const events = buildAllEvents();
+    const filtered = homeFilterProjectId ? events.filter(e => e.projectId === homeFilterProjectId) : events;
+    const year = homeCalMonth.getFullYear(), month = homeCalMonth.getMonth();
+    const firstDay = new Date(year, month, 1);
+    const startWeekday = (firstDay.getDay() + 6) % 7;
+    const daysInMonth = new Date(year, month + 1, 0).getDate();
+    const todayStr = new Date().toISOString().slice(0,10);
+    const dayTypes = {};
+    filtered.forEach(e => { (dayTypes[e.date] = dayTypes[e.date] || new Set()).add(e.type); });
+    const typeColor = { 'item-start':'cal-dot-blue', 'item-due':'cal-dot-blue', 'meeting':'cal-dot-sage', 'todo':'cal-dot-clay', 'payment':'cal-dot-gold' };
+    let cells = '';
+    for(let i=0;i<startWeekday;i++) cells += `<div class="cal-cell empty"></div>`;
+    for(let d=1; d<=daysInMonth; d++){
+      const dateStr = `${year}-${String(month+1).padStart(2,'0')}-${String(d).padStart(2,'0')}`;
+      const types = dayTypes[dateStr] ? Array.from(dayTypes[dateStr]) : [];
+      const dots = types.map(t => `<span class="cal-dot ${typeColor[t]||''}"></span>`).join('');
+      cells += `<div class="cal-cell ${dateStr === todayStr ? 'today' : ''}"><div class="cal-daynum">${d}</div><div class="cal-dots">${dots}</div></div>`;
+    }
+    document.getElementById('home-cal-grid').innerHTML = cells;
+    document.getElementById('home-cal-label').textContent = `${year}年${month+1}月`;
+    const monthPrefix = `${year}-${String(month+1).padStart(2,'0')}`;
+    const monthEvents = filtered.filter(e => e.date && e.date.startsWith(monthPrefix)).sort((a,b) => a.date.localeCompare(b.date));
+    const listEl = document.getElementById('home-cal-list');
+    listEl.innerHTML = monthEvents.length ? monthEvents.map(e => `
+      <div class="cal-list-row">
+        <span class="cal-list-date">${e.date.slice(5)}</span>
+        <span class="cal-dot ${typeColor[e.type]||''}"></span>
+        <span class="cal-list-proj">${escapeHTML(e.projectName)}</span>
+        <span class="cal-list-text">${escapeHTML(e.text)}</span>
+      </div>
+    `).join('') : '<div class="empty-note">這個月沒有排定的事項。</div>';
+    const filterLabelEl = document.getElementById('home-cal-filter-label');
+    if(homeFilterProjectId){
+      const fp = projects.find(x => x.id === homeFilterProjectId);
+      filterLabelEl.innerHTML = `目前查看:${escapeHTML(fp ? fp.name : '')} <button class="ghost-btn" style="padding:3px 10px;font-size:11px;" onclick="setHomeCalendarFilter(null)">返回總覽</button>`;
+    } else {
+      filterLabelEl.textContent = '總覽(全部專案)';
+    }
+  }
+  function homeCalPrevMonth(){ homeCalMonth = new Date(homeCalMonth.getFullYear(), homeCalMonth.getMonth() - 1, 1); renderHomeCalendar(); }
+  function homeCalNextMonth(){ homeCalMonth = new Date(homeCalMonth.getFullYear(), homeCalMonth.getMonth() + 1, 1); renderHomeCalendar(); }
+  function setHomeCalendarFilter(projectId){
+    homeFilterProjectId = projectId;
+    renderHomeCalendar();
+    const sec = document.getElementById('home-calendar-section');
+    if(sec) sec.scrollIntoView({ behavior: 'smooth' });
   }
 
   // ---------- project list ----------
@@ -618,6 +864,7 @@
         </div>
         <div class="project-name">${escapeHTML(p.name)}</div>
         <div class="project-meta">${metaLine}</div>
+        <div class="item-progress-row">${progressBarHTML(getProjectProgress(p))}</div>
       </div>
     `;
     }).join('');
@@ -669,8 +916,10 @@
 
   // ---------- project detail ----------
   function openProject(id){
+    switchTab('projects');
     currentProjectId = id;
     openItems = new Set(); openForms = new Set();
+    showingOverview = false;
     document.getElementById('view-projects').style.display = 'none';
     document.getElementById('view-detail').style.display = 'block';
     renderDetail();
@@ -683,26 +932,55 @@
     }).catch(err => alert('儲存失敗:' + err.message));
   }
 
+  let showingOverview = false;
+  function toggleOverview(){
+    showingOverview = !showingOverview;
+    renderDetail();
+  }
   function renderDetail(){
     const p = getCurrentProject();
     if(!p){ showProjectList(); return; }
     document.getElementById('detail-title').textContent = p.name + (p.completed ? '(已結案)' : '');
+    document.getElementById('detail-progress-row').innerHTML = progressBarHTML(getProjectProgress(p));
     const itemListEl = document.getElementById('item-list');
     const progressSectionEl = document.getElementById('progress-section');
+    const overviewSectionEl = document.getElementById('overview-section');
     const addItemBtn = document.getElementById('add-item-btn');
     const completeBtn = document.getElementById('complete-toggle-btn');
+    const overviewToggleBtn = document.getElementById('overview-toggle-btn');
+    const overviewWordBtn = document.getElementById('overview-word-btn');
+    const overviewPdfBtn = document.getElementById('overview-pdf-btn');
     completeBtn.style.display = 'inline-block';
     completeBtn.textContent = p.completed ? '↺ 重新開啟' : '✓ 標記完成';
 
     if(p.type === 'paid'){
       itemListEl.style.display = 'none';
+      overviewSectionEl.style.display = 'none';
       progressSectionEl.style.display = 'block';
       addItemBtn.style.display = 'none';
+      overviewToggleBtn.style.display = 'none';
+      overviewWordBtn.style.display = 'none';
+      overviewPdfBtn.style.display = 'none';
       renderProgressDetail(p);
       return;
     }
-    itemListEl.style.display = 'block';
+
     progressSectionEl.style.display = 'none';
+    overviewToggleBtn.style.display = 'inline-block';
+    overviewWordBtn.style.display = 'inline-block';
+    overviewPdfBtn.style.display = 'inline-block';
+
+    if(showingOverview){
+      overviewToggleBtn.textContent = '📄 返回明細';
+      itemListEl.style.display = 'none';
+      overviewSectionEl.style.display = 'block';
+      addItemBtn.style.display = 'none';
+      renderOverview(p);
+      return;
+    }
+    overviewToggleBtn.textContent = '📋 時程總覽';
+    itemListEl.style.display = 'block';
+    overviewSectionEl.style.display = 'none';
     addItemBtn.style.display = p.completed ? 'none' : 'inline-block';
     document.getElementById('add-item-btn').textContent = p.type === 'task' ? '+ 新增任務' : '+ 新增版本';
     const list = document.getElementById('item-list');
@@ -712,6 +990,69 @@
     }
     const today = new Date().toISOString().slice(0,10);
     list.innerHTML = p.items.map(item => itemRowHTML(p, item, today)).join('');
+  }
+
+  // ---------- 時程總覽(整理版) ----------
+  function buildOverviewData(p){
+    const rows = [];
+    (p.items||[]).forEach(item => {
+      (item.meetings||[]).forEach(m => {
+        (m.todos||[]).forEach(t => {
+          if(!t.done && t.due) rows.push({ date: t.due, text: t.text, owner: t.owner, itemName: item.name });
+        });
+      });
+    });
+    rows.sort((a,b) => a.date.localeCompare(b.date));
+    const decisions = [];
+    (p.items||[]).forEach(item => {
+      (item.pendingDecisions||[]).forEach(d => decisions.push({ ...d, itemName: item.name }));
+    });
+    return { rows, decisions };
+  }
+  function buildOverviewBodyHTML(p){
+    const { rows, decisions } = buildOverviewData(p);
+    const multiItem = (p.items||[]).length > 1;
+    const tableRows = rows.length ? rows.map(r => `
+      <tr><td class="od">${r.date}</td><td>${escapeHTML(r.text)}${r.owner ? '(' + escapeHTML(r.owner) + ')' : ''}${multiItem ? ' <span style="color:#999;">— ' + escapeHTML(r.itemName) + '</span>' : ''}</td></tr>
+    `).join('') : `<tr><td colspan="2" style="color:#999;text-align:center;">目前沒有已排定日期的待辦事項</td></tr>`;
+    const decisionsHTML = decisions.length ? decisions.map((d, idx) => `
+      <div class="overview-decision-item">
+        <span class="odt">${idx+1}. ${escapeHTML(d.title)}</span>
+        ${d.note ? `<span class="decision-tag">${escapeHTML(d.note)}</span>` : ''}
+        ${multiItem ? `<div style="font-size:11px;color:#999;margin-top:2px;">${escapeHTML(d.itemName)}</div>` : ''}
+        ${d.bullets && d.bullets.length ? `<ul class="decision-bullets">${d.bullets.map(b => `<li>${escapeHTML(b)}</li>`).join('')}</ul>` : ''}
+      </div>
+    `).join('') : '<div class="empty-note">目前沒有待確認/決定的事項。</div>';
+    return `
+      <div class="overview-sub-title">近期時程一覽</div>
+      <table class="overview-table"><thead><tr><th style="width:110px;">日期</th><th>事項</th></tr></thead><tbody>${tableRows}</tbody></table>
+      <div class="overview-sub-title">待我方確認/決定</div>
+      ${decisionsHTML}
+    `;
+  }
+  function renderOverview(p){
+    document.getElementById('overview-section').innerHTML = buildOverviewBodyHTML(p);
+  }
+  function buildOverviewReportHTML(p){
+    const generatedAt = new Date().toLocaleString('zh-TW');
+    return `<div style="font-family: 'Noto Serif TC', serif, sans-serif; color:#333; padding:8px;">
+        <div style="font-family:Georgia,'Noto Serif TC',serif;font-size:18px;letter-spacing:6px;color:#6E8894;margin-bottom:10px;">CHUANHO</div>
+        <h1 style="font-size:22px;margin:0 0 4px;">${escapeHTML(p.name)} 整理版</h1>
+        <p style="font-size:12px;color:#888;margin:0 0 20px;">時程與待確認事項總覽 · 產生於 ${generatedAt}</p>
+        ${buildOverviewBodyHTML(p)}
+      </div>`;
+  }
+  function exportOverviewPDF(){
+    const p = getCurrentProject();
+    openPrintWindow(p.name + '-整理版', buildOverviewReportHTML(p));
+  }
+  function exportOverviewWord(){
+    const p = getCurrentProject();
+    const header = "<html xmlns:o='urn:schemas-microsoft-com:office:office' xmlns:w='urn:schemas-microsoft-com:office:word' xmlns='http://www.w3.org/TR/REC-html40'><head><meta charset='utf-8'><title>整理版</title></head><body>";
+    const blob = new Blob(['﻿', header + buildOverviewReportHTML(p) + '</body></html>'], { type: 'application/msword' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a'); a.href = url; a.download = p.name + '-整理版.doc'; a.click();
+    URL.revokeObjectURL(url);
   }
 
   // ---------- 已匯款專案追蹤(progress timeline) ----------
@@ -799,14 +1140,15 @@
   }
 
   function itemRowHTML(p, item, today){
-    const overdue = p.type === 'task' && item.due && item.due < today;
-    const dateInfo = p.type === 'task'
-      ? `<span class="item-dates ${overdue ? 'overdue' : ''}">${item.start || '–'} → ${item.due || '–'}${overdue ? ' 逾期' : ''}</span>` : '';
+    const progress = getItemProgress(item);
+    const dateInfo = (item.start || item.due)
+      ? `<span class="item-dates ${progress && progress.overdue ? 'overdue' : ''}">${item.start || '–'} → ${item.due || '–'}${progress && progress.overdue ? ' 逾期' : ''}</span>` : '';
     const meetingsSorted = [...(item.meetings||[])].sort((a,b) => a.date.localeCompare(b.date));
     const isOpen = openItems.has(item.id);
     const formOpen = openForms.has(item.id);
     const photoLabel = p.type === 'task' ? '任務照片' : '版本照片';
     const confirmedEntries = item.confirmedEntries || [];
+    const pendingDecisions = item.pendingDecisions || [];
     const photos = item.photos || [];
 
     return `
@@ -816,8 +1158,10 @@
           <span class="item-title">${escapeHTML(item.name)}</span>
           ${dateInfo}
           <span class="item-count">${(item.meetings||[]).length} 則會議紀錄</span>
+          <button class="row-edit" onclick="event.stopPropagation(); openEditItemModal('${item.id}')" title="編輯名稱/日期">✎</button>
           <button class="item-del" onclick="event.stopPropagation(); deleteItem('${item.id}')" title="刪除">✕</button>
         </div>
+        <div class="item-progress-row" onclick="event.stopPropagation();">${progressBarHTML(progress)}</div>
         <div class="item-body">
           <div class="confirmed-section">
             <div class="section-head-row">
@@ -825,6 +1169,14 @@
               <button class="add-photo-btn" onclick="openNewConfirmedModal('${item.id}')">+ 新增確認事項</button>
             </div>
             ${confirmedEntries.length ? confirmedEntries.map(e => confirmedEntryHTML(item.id, e)).join('') : '<div class="empty-note" style="padding:0 0 4px;">尚無確認事項</div>'}
+          </div>
+
+          <div class="decision-section">
+            <div class="section-head-row">
+              <span class="section-lbl" style="margin:0;">待確認/決定事項</span>
+              <button class="add-photo-btn" onclick="openNewDecisionModal('${item.id}')">+ 新增待確認事項</button>
+            </div>
+            ${pendingDecisions.length ? pendingDecisions.map(d => decisionEntryHTML(item.id, d)).join('') : '<div class="empty-note" style="padding:0 0 4px;">尚無待確認事項</div>'}
           </div>
 
           <div class="photo-section">
@@ -919,6 +1271,50 @@
     const p = getCurrentProject();
     const item = p.items.find(i => i.id === itemId);
     item.confirmedEntries = item.confirmedEntries.filter(e => e.id !== entryId);
+    openItems.add(itemId);
+    renderDetail();
+    document.getElementById('row-' + itemId).classList.add('open');
+    saveProject(p);
+  }
+
+  // ---------- 待確認/決定事項 ----------
+  function decisionEntryHTML(itemId, d){
+    const bullets = d.bullets && d.bullets.length ? `<ul class="decision-bullets">${d.bullets.map(b => `<li>${escapeHTML(b)}</li>`).join('')}</ul>` : '';
+    return `
+      <div class="decision-card">
+        <button class="confirmed-del" onclick="deleteDecisionEntry('${itemId}','${d.id}')" title="刪除(已決定可移除)">✕</button>
+        <span class="decision-badge">待確認・${escapeHTML(d.title)}</span>
+        ${d.note ? `<span class="decision-tag">${escapeHTML(d.note)}</span>` : ''}
+        ${bullets}
+      </div>
+    `;
+  }
+  function openNewDecisionModal(itemId){
+    confirmTargetItemId = itemId;
+    document.getElementById('dc-title').value = '';
+    document.getElementById('dc-note').value = '';
+    document.getElementById('dc-bullets').value = '';
+    document.getElementById('modal-new-decision').classList.add('open');
+  }
+  function createDecisionEntry(){
+    const p = getCurrentProject();
+    const item = p.items.find(i => i.id === confirmTargetItemId);
+    if(!item.pendingDecisions) item.pendingDecisions = [];
+    const title = document.getElementById('dc-title').value.trim();
+    if(!title){ alert('請輸入標題'); return; }
+    const note = document.getElementById('dc-note').value.trim();
+    const bullets = document.getElementById('dc-bullets').value.split('\n').map(s => s.trim()).filter(Boolean);
+    item.pendingDecisions.push({ id: uid(), title, note, bullets, createdAt: Date.now() });
+    closeModal('modal-new-decision');
+    openItems.add(confirmTargetItemId);
+    renderDetail();
+    document.getElementById('row-' + confirmTargetItemId).classList.add('open');
+    saveProject(p);
+  }
+  function deleteDecisionEntry(itemId, entryId){
+    const p = getCurrentProject();
+    const item = p.items.find(i => i.id === itemId);
+    item.pendingDecisions = (item.pendingDecisions||[]).filter(d => d.id !== entryId);
     openItems.add(itemId);
     renderDetail();
     document.getElementById('row-' + itemId).classList.add('open');
@@ -1190,29 +1586,44 @@
     saveProject(p);
   }
 
+  let editingItemId = null;
   function openNewItemModal(){
     const p = getCurrentProject();
+    editingItemId = null;
     document.getElementById('ni-name').value = '';
     document.getElementById('ni-title').textContent = p.type === 'task' ? '新增任務' : '新增版本';
     document.getElementById('ni-name-label').textContent = p.type === 'task' ? '任務名稱' : '版本名稱';
-    document.getElementById('ni-date-fields').style.display = p.type === 'task' ? 'block' : 'none';
-    if(p.type === 'task'){
-      document.getElementById('ni-start').value = new Date().toISOString().slice(0,10);
-      document.getElementById('ni-due').value = '';
-    }
+    document.getElementById('ni-start').value = new Date().toISOString().slice(0,10);
+    document.getElementById('ni-due').value = '';
+    document.getElementById('modal-new-item').classList.add('open');
+  }
+  function openEditItemModal(itemId){
+    const p = getCurrentProject();
+    const item = p.items.find(i => i.id === itemId);
+    if(!item) return;
+    editingItemId = itemId;
+    document.getElementById('ni-name').value = item.name;
+    document.getElementById('ni-title').textContent = p.type === 'task' ? '編輯任務' : '編輯版本';
+    document.getElementById('ni-name-label').textContent = p.type === 'task' ? '任務名稱' : '版本名稱';
+    document.getElementById('ni-start').value = item.start || '';
+    document.getElementById('ni-due').value = item.due || '';
     document.getElementById('modal-new-item').classList.add('open');
   }
   function createItem(){
     const p = getCurrentProject();
     const name = document.getElementById('ni-name').value.trim();
     if(!name){ alert('請輸入名稱'); return; }
-    const item = { id: uid(), name, photos: [], confirmedEntries: [], meetings: [] };
-    if(p.type === 'task'){
-      item.start = document.getElementById('ni-start').value;
-      item.due = document.getElementById('ni-due').value;
+    const start = document.getElementById('ni-start').value;
+    const due = document.getElementById('ni-due').value;
+    if(editingItemId){
+      const item = p.items.find(i => i.id === editingItemId);
+      item.name = name; item.start = start; item.due = due;
+      editingItemId = null;
+    } else {
+      const item = { id: uid(), name, start, due, photos: [], confirmedEntries: [], pendingDecisions: [], meetings: [] };
+      if(!p.items) p.items = [];
+      p.items.push(item);
     }
-    if(!p.items) p.items = [];
-    p.items.push(item);
     closeModal('modal-new-item');
     renderDetail();
     saveProject(p);
@@ -1770,6 +2181,45 @@
   // ---------- utils ----------
   function escapeHTML(s){ return (s || '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
   function escapeAttr(s){ return (s || '').replace(/"/g, '&quot;'); }
+
+  // ---------- 進度計算 ----------
+  function getItemProgress(item){
+    if(!item.start || !item.due) return null;
+    const start = new Date(item.start + 'T00:00:00');
+    const due = new Date(item.due + 'T00:00:00');
+    const now = new Date(new Date().toISOString().slice(0,10) + 'T00:00:00');
+    if(isNaN(start) || isNaN(due)) return null;
+    const overdue = now > due;
+    if(due <= start) return { pct: 100, overdue };
+    let pct = Math.round((now - start) / (due - start) * 100);
+    pct = Math.max(0, Math.min(100, pct));
+    if(overdue) pct = 100;
+    return { pct, overdue };
+  }
+  function getProjectProgress(p){
+    if(p.type === 'paid'){
+      const pay = payments.find(x => x.id === p.linkedPaymentId);
+      if(pay){
+        const total = Number(pay.amount || 0);
+        const paidAmt = getPaidAmount(pay);
+        if(total <= 0) return null;
+        return { pct: Math.max(0, Math.min(100, Math.round(paidAmt / total * 100))), overdue: false };
+      }
+      return { pct: p.completed ? 100 : 0, overdue: false };
+    }
+    const items = (p.items || []).map(i => getItemProgress(i)).filter(Boolean);
+    if(items.length === 0) return null;
+    const avg = Math.round(items.reduce((s,r) => s + r.pct, 0) / items.length);
+    const anyOverdue = items.some(r => r.overdue && r.pct >= 100);
+    return { pct: avg, overdue: anyOverdue && avg >= 100 };
+  }
+  function progressBarHTML(progress, size){
+    if(!progress) return `<div class="empty-note" style="padding:4px 0;">尚未排定時程</div>`;
+    const cls = size === 'sm' ? 'progress-bar sm' : 'progress-bar';
+    const fillCls = progress.overdue ? 'progress-bar-fill overdue' : 'progress-bar-fill';
+    return `<div class="${cls}"><div class="${fillCls}" style="width:${progress.pct}%;"></div></div>
+      <div class="progress-pct ${progress.overdue ? 'overdue' : ''}">${progress.pct}%${progress.overdue ? ' · 逾期' : ''}</div>`;
+  }
 
   // ---------- project report export ----------
   function buildReportHTML(){
