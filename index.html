@@ -663,11 +663,10 @@
   <div class="modal-overlay" id="modal-new-stock">
     <div class="modal">
       <h3 id="stock-modal-title">新增進貨</h3>
-      <div class="form-row"><label>從物料對應帶入(選填)</label><select id="ns-material" onchange="onStockMaterialPick()"></select></div>
       <div class="form-row"><label>廠商</label><input id="ns-vendor" type="text"></div>
       <div class="form-row"><label>品名</label><input id="ns-name" type="text" placeholder="例如:外盒"></div>
       <div class="form-row"><label>料號(選填)</label><input id="ns-partno" type="text"></div>
-      <div class="form-row"><label>工廠下單數量</label><input id="ns-qty" type="number" min="0"></div>
+      <div class="form-row"><label>進貨數量</label><input id="ns-qty" type="number" min="0"></div>
       <div class="form-row"><label>進貨日期(廠商送物料的日子)</label><input id="ns-receive" type="date"></div>
       <div class="form-row"><label>工廠出貨日期(選填)</label><input id="ns-ship" type="date"></div>
       <div class="form-row"><label>備註(選填)</label><input id="ns-note" type="text"></div>
@@ -796,6 +795,7 @@
 
     unsubscribers.push(db.collection('materials').onSnapshot(snap => {
       materials = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+      if(currentTab === 'home') renderHome();
       if(currentTab === 'materials') renderMaterials();
       if(currentTab === 'inventory') renderInventory();
     }, err => console.error('materials listener', err)));
@@ -864,10 +864,13 @@
       const projName = trackingProj ? trackingProj.name : (linkedProj ? linkedProj.name : (pay.item || '未分類付款'));
       events.push({ date: pay.dueDate, projectId: projId, projectName: projName, type: 'payment', text: '付款到期:' + pay.item });
     });
-    inventory.forEach(st => {
-      const label = (st.vendor ? st.vendor + ' ' : '') + (st.name || '');
-      if(st.receiveDate) events.push({ date: st.receiveDate, projectId: null, projectName: '📦 庫存', type: 'stock-in', text: '進貨:' + label + ' ×' + (Number(st.orderQty)||0) });
-      if(st.shipDate) events.push({ date: st.shipDate, projectId: null, projectName: '📦 庫存', type: 'stock-ship', text: '工廠出貨:' + label });
+    buildStockGroups().forEach(g => {
+      const label = (g.vendor ? g.vendor + ' ' : '') + (g.name || '');
+      g.purchases.forEach(pu => {
+        if(pu.receiveDate) events.push({ date: pu.receiveDate, projectId: null, projectName: '📦 庫存', type: 'stock-in', text: '進貨:' + label + ' ×' + pu.qty.toLocaleString() });
+        if(pu.shipDate) events.push({ date: pu.shipDate, projectId: null, projectName: '📦 庫存', type: 'stock-ship', text: '工廠出貨:' + label });
+      });
+      g.extraShips.forEach(x => events.push({ date: x.shipDate, projectId: null, projectName: '📦 庫存', type: 'stock-ship', text: '工廠出貨:' + label }));
     });
     return events;
   }
@@ -1874,77 +1877,48 @@
     db.collection('standaloneTodos').doc(id).delete().catch(err => alert('刪除失敗:' + err.message));
   }
 
-  // ---------- 庫存 ----------
-  function getStockUsed(s){ return (s.usageLog||[]).reduce((sum,u) => sum + (Number(u.qty)||0), 0); }
-  function getStockRemain(s){ return (Number(s.orderQty)||0) - getStockUsed(s); }
-  function renderInventory(){
-    const list = document.getElementById('stock-list');
-    const statsEl = document.getElementById('stock-stats');
-    populateStockFilter();
-    const flt = document.getElementById('stock-filter').value || 'all';
-    const visible = inventory.filter(x => {
-      if(flt === 'all') return true;
-      if(flt === 'none') return !x.materialId;
-      if(flt.startsWith('m:')) return x.materialId === flt.slice(2);
-      if(flt.startsWith('p:')){ const m = materials.find(mm => mm.id === x.materialId); return !!m && m.projectId === flt.slice(2); }
-      return true;
-    });
-    const sorted = [...visible].sort((a,b) => (b.receiveDate||'').localeCompare(a.receiveDate||''));
-    const totalOrder = visible.reduce((s,x) => s + (Number(x.orderQty)||0), 0);
-    const totalUsed = visible.reduce((s,x) => s + getStockUsed(x), 0);
-    statsEl.innerHTML = `
-      <div class="stat-card"><div class="stat-label">進貨批次</div><div class="stat-num">${visible.length}</div></div>
-      <div class="stat-card"><div class="stat-label">下單總量</div><div class="stat-num">${totalOrder.toLocaleString()}</div></div>
-      <div class="stat-card"><div class="stat-label">已使用</div><div class="stat-num">${totalUsed.toLocaleString()}</div></div>
-      <div class="stat-card"><div class="stat-label">目前剩餘</div><div class="stat-num">${(totalOrder-totalUsed).toLocaleString()}</div></div>`;
-    if(sorted.length === 0){ list.innerHTML = '<div class="empty-note">沒有符合條件的進貨紀錄,可點右上角「+ 新增進貨」。</div>'; return; }
-    list.innerHTML = sorted.map(s => {
-      const order = Number(s.orderQty)||0, used = getStockUsed(s), remain = order - used;
-      const pct = order > 0 ? Math.max(0, Math.min(100, Math.round(remain / order * 100))) : 0;
-      const empty = remain <= 0;
-      const usageSorted = [...(s.usageLog||[])].sort((a,b) => (b.date||'').localeCompare(a.date||''));
-      const usageHTML = usageSorted.map(u => {
-        const proj = u.projectId ? projects.find(p => p.id === u.projectId) : null;
-        return `<div class="stock-usage-row">
-          <span class="u-date">${u.date || '—'}</span>
-          <span class="u-qty">−${Number(u.qty)||0}</span>
-          <span class="u-note">${proj ? escapeHTML(proj.name) : ''}${proj && u.note ? ' · ' : ''}${escapeHTML(u.note || '')}</span>
-          <button class="stock-usage-del" onclick="deleteUsage('${s.id}','${u.id}')" title="刪除這筆(庫存會加回)">✕</button>
-        </div>`;
-      }).join('');
-      return `
-        <div class="stock-card ${openStockCards.has(s.id) ? 'open' : ''}" id="stock-${s.id}">
-          <div class="stock-head" onclick="toggleStockHistory('${s.id}')" title="點擊展開/收合歷史一覽表">
-            <span class="stock-chevron">▸</span>
-            <span class="stock-name">${escapeHTML(s.name || '')}</span>
-            <span class="stock-vendor">${escapeHTML(s.vendor || '')}${s.partNo ? ' ・ 料號 ' + escapeHTML(s.partNo) : ''}${stockProductLabel(s) ? ' ・ ' + escapeHTML(stockProductLabel(s)) : ''}</span>
-            ${empty ? '<span class="status-badge unpaid">已用完</span>' : ''}
-          </div>
-          <div class="stock-dates">進貨 ${s.receiveDate || '—'}${s.shipDate ? ' ・ 工廠出貨 ' + s.shipDate : ''}${s.note ? ' ・ ' + escapeHTML(s.note) : ''}</div>
-          <div class="stock-nums">
-            <div class="stock-num"><div class="lbl">下單數量</div><div class="val">${order.toLocaleString()}</div></div>
-            <div class="stock-num"><div class="lbl">已使用</div><div class="val">${used.toLocaleString()}</div></div>
-            <div class="stock-num remain ${empty ? 'empty' : ''}"><div class="lbl">剩餘</div><div class="val">${remain.toLocaleString()}</div></div>
-          </div>
-          <div class="progress-bar"><div class="stock-bar-fill ${empty ? 'empty' : ''}" style="width:${pct}%;"></div></div>
-          <div class="progress-pct">剩餘 ${pct}%</div>
-          <div class="stock-actions">
-            <button class="primary-btn" style="padding:7px 14px;font-size:12px;" onclick="openUseModal('${s.id}')">− 登記使用</button>
-            <button class="ghost-btn" style="padding:7px 14px;font-size:12px;" onclick="openStockModal('${s.id}')">編輯</button>
-            <button class="ghost-btn" style="padding:7px 14px;font-size:12px;" onclick="deleteStock('${s.id}')">刪除</button>
-          </div>
-          ${usageHTML ? `<div style="margin-top:10px;">${usageHTML}</div>` : ''}
-          <div class="stock-history">${buildStockHistoryHTML(s)}
-            <div class="stock-actions">
-              <button class="ghost-btn" style="padding:7px 14px;font-size:12px;" onclick="exportStockWord('${s.id}')">匯出 Word</button>
-              <button class="ghost-btn" style="padding:7px 14px;font-size:12px;" onclick="exportStockPDF('${s.id}')">匯出 PDF</button>
-            </div>
-          </div>
-        </div>`;
-    }).join('');
+  // ---------- 庫存(由物料對應的數量自動累加,同廠商+料號相加) ----------
+  function parseQty(v){ return Number(String(v == null ? '' : v).replace(/[^\d.]/g,'')) || 0; }
+  function stockKeyOf(materialId, vendor, partNo, name){
+    const v = (vendor||'').trim().toLowerCase();
+    if(!materialId) return 'x|' + v + '|' + (name||'').trim().toLowerCase();
+    return 'm:' + materialId + '|' + v + '|' + (((partNo||'').trim() || (name||'').trim()).toLowerCase());
   }
-  function stockProductLabel(s){
-    const m = s.materialId ? materials.find(x => x.id === s.materialId) : null;
+  let stockGroups = [];
+  function buildStockGroups(){
+    const map = {};
+    function ensure(key, base){
+      return map[key] || (map[key] = { key, materialId: base.materialId || '', vendor: base.vendor || '', name: base.name || '', partNo: base.partNo || '', purchases: [], docs: [], extraShips: [] });
+    }
+    materials.forEach(m => (m.suppliers||[]).forEach(sup => (sup.items||[]).forEach(it => {
+      const qty = parseQty(it.quantity);
+      if(!(qty > 0)) return;
+      const g = ensure(stockKeyOf(m.id, sup.vendor, it.partNo, it.itemName), { materialId: m.id, vendor: sup.vendor, name: it.itemName, partNo: it.partNo });
+      g.purchases.push({ src: 'material', qty, receiveDate: it.receiveDate || '', orderDate: it.orderDate || '', shipDate: it.shipDate || '' });
+    })));
+    inventory.forEach(d => { ensure(stockKeyOf(d.materialId, d.vendor, d.partNo, d.name), d).docs.push(d); });
+    Object.values(map).forEach(g => {
+      const hasMat = g.purchases.length > 0;
+      g.docs.forEach(d => {
+        if(!d.materialId || !hasMat){
+          g.purchases.push({ src: d.materialId ? 'legacy' : 'manual', docId: d.id, qty: Number(d.orderQty)||0, receiveDate: d.receiveDate || '', orderDate: '', shipDate: d.shipDate || '', note: d.note || '' });
+        } else if(d.shipDate){
+          g.extraShips.push({ shipDate: d.shipDate });
+        }
+      });
+      g.extraShips = g.extraShips.filter(x => !g.purchases.some(pu => pu.shipDate === x.shipDate));
+      g.purchases.sort((a,b) => (a.receiveDate||a.orderDate||'').localeCompare(b.receiveDate||b.orderDate||''));
+      g.usages = [];
+      g.docs.forEach(d => (d.usageLog||[]).forEach(u => g.usages.push({ ...u, docId: d.id })));
+      g.usages.sort((a,b) => (a.date||'').localeCompare(b.date||''));
+      g.ordered = g.purchases.reduce((sum,x) => sum + x.qty, 0);
+      g.used = g.usages.reduce((sum,u) => sum + (Number(u.qty)||0), 0);
+      g.remain = g.ordered - g.used;
+    });
+    return Object.values(map).filter(g => g.purchases.length || g.docs.length);
+  }
+  function stockProductLabel(g){
+    const m = g.materialId ? materials.find(x => x.id === g.materialId) : null;
     if(!m) return '';
     const proj = m.projectId ? projects.find(p => p.id === m.projectId) : null;
     return '產品:' + (m.productName || '') + (proj ? '(' + proj.name + ')' : '');
@@ -1960,112 +1934,126 @@
   }
   function goToInventoryFilter(value){
     switchTab('inventory');
-    const sel = document.getElementById('stock-filter');
-    sel.value = value;
+    document.getElementById('stock-filter').value = value;
     renderInventory();
   }
-  let nsMaterialId = '';
-  function populateStockMaterialSelect(selected){
-    let html = '<option value="">(不帶入,手動輸入)</option>';
-    materials.forEach(m => {
-      (m.suppliers||[]).forEach((sup, si) => {
-        (sup.items||[]).forEach((it, ii) => {
-          const label = `${m.productName||''} › ${sup.vendor||'未填廠商'} › ${it.itemName||'未填品名'}${it.partNo ? '(' + it.partNo + ')' : ''}`;
-          html += `<option value="${m.id}|${si}|${ii}">${escapeHTML(label)}</option>`;
-        });
-      });
-    });
-    const sel = document.getElementById('ns-material');
-    sel.innerHTML = html;
-    sel.value = selected || '';
-  }
-  function onStockMaterialPick(){
-    const v = document.getElementById('ns-material').value;
-    if(!v){ return; }
-    const [mid, si, ii] = v.split('|');
-    const m = materials.find(x => x.id === mid); if(!m) return;
-    const sup = (m.suppliers||[])[Number(si)]; const it = sup && (sup.items||[])[Number(ii)];
-    if(!sup || !it) return;
-    nsMaterialId = mid;
-    document.getElementById('ns-vendor').value = sup.vendor || '';
-    document.getElementById('ns-name').value = it.itemName || '';
-    document.getElementById('ns-partno').value = it.partNo || '';
-    if(it.receiveDate) document.getElementById('ns-receive').value = it.receiveDate;
-    if(!document.getElementById('ns-qty').value && it.quantity) document.getElementById('ns-qty').value = Number(String(it.quantity).replace(/[^\d.]/g,'')) || '';
-  }
   function stockLineHTML(m, sup, it){
-    const batches = inventory.filter(x => x.materialId === m.id && (x.vendor||'').trim() === (sup.vendor||'').trim() &&
-      ((x.partNo && it.partNo) ? x.partNo === it.partNo : (x.name||'').trim() === (it.itemName||'').trim()));
-    if(batches.length === 0) return `<div class="stock-link-line none">📦 尚未登記進貨</div>`;
-    const order = batches.reduce((a,b) => a + (Number(b.orderQty)||0), 0);
-    const used = batches.reduce((a,b) => a + getStockUsed(b), 0);
-    return `<div class="stock-link-line" onclick="goToInventoryFilter('m:${m.id}')">📦 目前庫存:剩餘 ${(order-used).toLocaleString()} / 下單 ${order.toLocaleString()}(點擊查看)</div>`;
+    const g = stockGroups.find(x => x.key === stockKeyOf(m.id, sup.vendor, it.partNo, it.itemName));
+    if(!g || g.ordered <= 0) return `<div class="stock-link-line none">📦 尚未填寫數量,無法計算庫存</div>`;
+    return `<div class="stock-link-line" onclick="goToInventoryFilter('m:${m.id}')">📦 此料號合計庫存:剩餘 ${g.remain.toLocaleString()} / 累計進貨 ${g.ordered.toLocaleString()}(點擊查看)</div>`;
   }
   let openStockCards = new Set();
-  function toggleStockHistory(id){
-    if(openStockCards.has(id)) openStockCards.delete(id); else openStockCards.add(id);
-    const el = document.getElementById('stock-' + id);
-    if(el) el.classList.toggle('open', openStockCards.has(id));
+  function toggleStockHistory(i){
+    const g = stockGroups[i]; if(!g) return;
+    if(openStockCards.has(g.key)) openStockCards.delete(g.key); else openStockCards.add(g.key);
+    const el = document.getElementById('stock-g' + i);
+    if(el) el.classList.toggle('open', openStockCards.has(g.key));
   }
-  function stockGroupKey(s){ return ((s.vendor||'').trim() + '|' + (s.name||'').trim()).toLowerCase(); }
-  function getStockGroup(s){
-    const key = stockGroupKey(s);
-    const batches = inventory.filter(x => stockGroupKey(x) === key).sort((a,b) => (a.receiveDate||'').localeCompare(b.receiveDate||''));
-    const usages = [];
-    batches.forEach(b => (b.usageLog||[]).forEach(u => usages.push({ ...u, batchDate: b.receiveDate })));
-    usages.sort((a,b) => (a.date||'').localeCompare(b.date||''));
-    const ordered = batches.reduce((sum,b) => sum + (Number(b.orderQty)||0), 0);
-    const used = usages.reduce((sum,u) => sum + (Number(u.qty)||0), 0);
-    return { batches, usages, ordered, used, remain: ordered - used };
-  }
-  function buildStockHistoryHTML(s){
-    const g = getStockGroup(s);
-    const batchRows = g.batches.map(b => `<tr><td class="od">${b.receiveDate||'—'}</td><td>${(Number(b.orderQty)||0).toLocaleString()}</td><td>${b.shipDate||'—'}</td><td>${escapeHTML(b.note||'')}</td></tr>`).join('');
+  function buildStockHistoryHTML(g, forExport){
+    const h = t => forExport ? `<h3 style="font-size:15px;margin:18px 0 8px;">${t}</h3>` : `<div class="overview-sub-title">${t}</div>`;
+    const srcLabel = pu => pu.src === 'material' ? '物料對應' : pu.src === 'legacy' ? '舊登記' : '手動登記';
+    const purchaseRows = g.purchases.map(pu => `<tr>
+      <td class="od">${pu.receiveDate || '—'}</td><td>${pu.qty.toLocaleString()}</td><td>${pu.orderDate || '—'}</td><td>${pu.shipDate || '—'}</td>
+      <td>${srcLabel(pu)}${(!forExport && pu.src === 'manual') ? ` <button class="stock-usage-del" onclick="openStockModal('${pu.docId}')">✎</button><button class="stock-usage-del" onclick="deleteStock('${pu.docId}')">✕</button>` : ''}</td></tr>`).join('');
     let cum = 0;
     const usageRows = g.usages.map(u => {
       cum += Number(u.qty)||0;
       const proj = u.projectId ? projects.find(p => p.id === u.projectId) : null;
-      return `<tr><td class="od">${u.date||'—'}</td><td>${(Number(u.qty)||0).toLocaleString()}</td><td>${proj ? escapeHTML(proj.name) : '—'}</td><td>${escapeHTML(u.note||'')}</td><td>${cum.toLocaleString()}</td></tr>`;
-    }).join('') || `<tr><td colspan="5" style="color:#999;text-align:center;">尚無使用紀錄</td></tr>`;
+      return `<tr><td class="od">${u.date || '—'}</td><td>${(Number(u.qty)||0).toLocaleString()}</td><td>${proj ? escapeHTML(proj.name) : '—'}</td><td>${escapeHTML(u.note||'')}</td><td>${cum.toLocaleString()}</td>${forExport ? '' : `<td><button class="stock-usage-del" onclick="deleteUsage('${u.docId}','${u.id}')" title="刪除這筆(庫存會加回)">✕</button></td>`}</tr>`;
+    }).join('') || `<tr><td colspan="${forExport ? 5 : 6}" style="color:#999;text-align:center;">尚無使用紀錄</td></tr>`;
     return `
       <div class="stock-sum">
         <span>累計進貨 <b>${g.ordered.toLocaleString()}</b></span>
         <span>累計用掉 <b>${g.used.toLocaleString()}</b></span>
         <span>目前總剩餘 <b>${g.remain.toLocaleString()}</b></span>
       </div>
-      <div class="overview-sub-title">進貨紀錄(${g.batches.length} 批)</div>
-      <table class="overview-table"><thead><tr><th style="width:110px;">進貨日期</th><th>下單數量</th><th>工廠出貨日</th><th>備註</th></tr></thead><tbody>${batchRows}</tbody></table>
-      <div class="overview-sub-title">使用紀錄(${g.usages.length} 筆)</div>
-      <table class="overview-table"><thead><tr><th style="width:110px;">使用日期</th><th>數量</th><th>專案</th><th>備註</th><th>累計已用</th></tr></thead><tbody>${usageRows}</tbody></table>`;
+      ${h('進貨紀錄(' + g.purchases.length + ' 筆)')}
+      <table class="overview-table"><thead><tr><th style="width:110px;">進貨日期</th><th>數量</th><th>訂貨日期</th><th>工廠出貨日</th><th>來源</th></tr></thead><tbody>${purchaseRows || '<tr><td colspan="5" style="color:#999;text-align:center;">尚無進貨紀錄</td></tr>'}</tbody></table>
+      ${h('使用紀錄(' + g.usages.length + ' 筆)')}
+      <table class="overview-table"><thead><tr><th style="width:110px;">使用日期</th><th>數量</th><th>專案</th><th>備註</th><th>累計已用</th>${forExport ? '' : '<th></th>'}</tr></thead><tbody>${usageRows}</tbody></table>`;
   }
-  function buildStockReportHTML(s){
+  function renderInventory(){
+    populateStockFilter();
+    stockGroups = buildStockGroups();
+    const list = document.getElementById('stock-list');
+    const flt = document.getElementById('stock-filter').value || 'all';
+    const visible = stockGroups.map((g,i) => ({ g, i })).filter(({ g }) => {
+      if(flt === 'all') return true;
+      if(flt === 'none') return !g.materialId;
+      if(flt.startsWith('m:')) return g.materialId === flt.slice(2);
+      if(flt.startsWith('p:')){ const m = materials.find(mm => mm.id === g.materialId); return !!m && m.projectId === flt.slice(2); }
+      return true;
+    });
+    const totalOrder = visible.reduce((a,x) => a + x.g.ordered, 0);
+    const totalUsed = visible.reduce((a,x) => a + x.g.used, 0);
+    document.getElementById('stock-stats').innerHTML = `
+      <div class="stat-card"><div class="stat-label">庫存品項</div><div class="stat-num">${visible.length}</div></div>
+      <div class="stat-card"><div class="stat-label">累計進貨</div><div class="stat-num">${totalOrder.toLocaleString()}</div></div>
+      <div class="stat-card"><div class="stat-label">已使用</div><div class="stat-num">${totalUsed.toLocaleString()}</div></div>
+      <div class="stat-card"><div class="stat-label">目前剩餘</div><div class="stat-num">${(totalOrder-totalUsed).toLocaleString()}</div></div>`;
+    if(visible.length === 0){ list.innerHTML = '<div class="empty-note">還沒有庫存品項。在「物料對應」填寫料號與數量就會自動出現在這裡;不在物料對應的品項可點右上角「+ 新增進貨」。</div>'; return; }
+    visible.sort((a,b) => (a.g.name||'').localeCompare(b.g.name||''));
+    list.innerHTML = visible.map(({ g, i }) => {
+      const pct = g.ordered > 0 ? Math.max(0, Math.min(100, Math.round(g.remain / g.ordered * 100))) : 0;
+      const empty = g.remain <= 0;
+      const lastDate = g.purchases.map(x => x.receiveDate).filter(Boolean).sort().pop() || '';
+      const ships = g.purchases.map(x => x.shipDate).filter(Boolean).sort();
+      return `
+        <div class="stock-card ${openStockCards.has(g.key) ? 'open' : ''}" id="stock-g${i}">
+          <div class="stock-head" onclick="toggleStockHistory(${i})" title="點擊展開/收合進貨與使用一覽表">
+            <span class="stock-chevron">▸</span>
+            <span class="stock-name">${escapeHTML(g.name || '')}</span>
+            <span class="stock-vendor">${escapeHTML(g.vendor || '')}${g.partNo ? ' ・ 料號 ' + escapeHTML(g.partNo) : ''}${stockProductLabel(g) ? ' ・ ' + escapeHTML(stockProductLabel(g)) : ''}</span>
+            ${empty ? '<span class="status-badge unpaid">已用完</span>' : ''}
+          </div>
+          <div class="stock-dates">${g.purchases.length} 次進貨${lastDate ? ' ・ 最近進貨 ' + lastDate : ''}${ships.length ? ' ・ 最近工廠出貨 ' + ships[ships.length-1] : ''}</div>
+          <div class="stock-nums">
+            <div class="stock-num"><div class="lbl">累計進貨</div><div class="val">${g.ordered.toLocaleString()}</div></div>
+            <div class="stock-num"><div class="lbl">已使用</div><div class="val">${g.used.toLocaleString()}</div></div>
+            <div class="stock-num remain ${empty ? 'empty' : ''}"><div class="lbl">剩餘</div><div class="val">${g.remain.toLocaleString()}</div></div>
+          </div>
+          <div class="progress-bar"><div class="stock-bar-fill ${empty ? 'empty' : ''}" style="width:${pct}%;"></div></div>
+          <div class="progress-pct">剩餘 ${pct}%</div>
+          <div class="stock-actions">
+            <button class="primary-btn" style="padding:7px 14px;font-size:12px;" onclick="openUseModal(${i})">− 登記使用</button>
+          </div>
+          <div class="stock-history">${buildStockHistoryHTML(g, false)}
+            <div class="stock-actions">
+              <button class="ghost-btn" style="padding:7px 14px;font-size:12px;" onclick="exportStockWord(${i})">匯出 Word</button>
+              <button class="ghost-btn" style="padding:7px 14px;font-size:12px;" onclick="exportStockPDF(${i})">匯出 PDF</button>
+            </div>
+          </div>
+        </div>`;
+    }).join('');
+  }
+  function buildStockReportHTML(g){
     const generatedAt = new Date().toLocaleString('zh-TW');
     return `<div style="font-family: 'Noto Serif TC', serif, sans-serif; color:#333; padding:8px;">
       <div style="font-family:Georgia,'Noto Serif TC',serif;font-size:18px;letter-spacing:6px;color:#6E8894;margin-bottom:10px;">CHUANHO</div>
-      <h1 style="font-size:22px;margin:0 0 4px;">${escapeHTML(s.name||'')}(${escapeHTML(s.vendor||'')})庫存一覽</h1>
+      <h1 style="font-size:22px;margin:0 0 4px;">${escapeHTML(g.name||'')}(${escapeHTML(g.vendor||'')})庫存一覽</h1>
       <p style="font-size:12px;color:#888;margin:0 0 20px;">進貨與使用紀錄 · 產生於 ${generatedAt}</p>
-      ${buildStockHistoryHTML(s).replace(/<div class="overview-sub-title">/g,'<h3 style="font-size:15px;margin:18px 0 8px;">').replace(/<\/div>\s*<table/g,'</h3><table')}
+      ${buildStockHistoryHTML(g, true)}
     </div>`;
   }
-  function exportStockPDF(id){
-    const s = inventory.find(x => x.id === id); if(!s) return;
-    openPrintWindow((s.name||'庫存') + '-庫存一覽', buildStockReportHTML(s));
+  function exportStockPDF(i){
+    const g = stockGroups[i]; if(!g) return;
+    openPrintWindow((g.name||'庫存') + '-庫存一覽', buildStockReportHTML(g));
   }
-  function exportStockWord(id){
-    const s = inventory.find(x => x.id === id); if(!s) return;
+  function exportStockWord(i){
+    const g = stockGroups[i]; if(!g) return;
     const header = "<html xmlns:o='urn:schemas-microsoft-com:office:office' xmlns:w='urn:schemas-microsoft-com:office:word' xmlns='http://www.w3.org/TR/REC-html40'><head><meta charset='utf-8'><title>庫存一覽</title></head><body>";
-    const blob = new Blob(['\ufeff', header + buildStockReportHTML(s) + '</body></html>'], { type: 'application/msword' });
+    const blob = new Blob(['﻿', header + buildStockReportHTML(g) + '</body></html>'], { type: 'application/msword' });
     const url = URL.createObjectURL(blob);
-    const a = document.createElement('a'); a.href = url; a.download = (s.name||'庫存') + '-庫存一覽.doc'; a.click();
+    const a = document.createElement('a'); a.href = url; a.download = (g.name||'庫存') + '-庫存一覽.doc'; a.click();
     URL.revokeObjectURL(url);
   }
+
+  // 手動新增進貨(給不在物料對應裡的品項用)
   let editingStockId = null;
   function openStockModal(id){
     editingStockId = id || null;
     const s = id ? inventory.find(x => x.id === id) : null;
-    document.getElementById('stock-modal-title').textContent = s ? '編輯進貨' : '新增進貨';
-    nsMaterialId = s ? (s.materialId || '') : '';
-    populateStockMaterialSelect('');
+    document.getElementById('stock-modal-title').textContent = s ? '編輯進貨' : '新增進貨(不在物料對應的品項)';
     document.getElementById('ns-partno').value = s ? (s.partNo||'') : '';
     document.getElementById('ns-vendor').value = s ? (s.vendor||'') : '';
     document.getElementById('ns-name').value = s ? (s.name||'') : '';
@@ -2080,29 +2068,31 @@
     const name = document.getElementById('ns-name').value.trim();
     const orderQty = Number(document.getElementById('ns-qty').value);
     if(!name){ alert('請輸入品名'); return; }
-    if(!(orderQty >= 0) || document.getElementById('ns-qty').value === ''){ alert('請輸入工廠下單數量'); return; }
+    if(!(orderQty >= 0) || document.getElementById('ns-qty').value === ''){ alert('請輸入數量'); return; }
     const data = {
-      vendor, name, orderQty, partNo: document.getElementById('ns-partno').value.trim(), materialId: nsMaterialId || '',
+      vendor, name, orderQty, partNo: document.getElementById('ns-partno').value.trim(),
       receiveDate: document.getElementById('ns-receive').value,
       shipDate: document.getElementById('ns-ship').value,
       note: document.getElementById('ns-note').value.trim()
     };
     const op = editingStockId
       ? db.collection('inventory').doc(editingStockId).update(data)
-      : db.collection('inventory').add({ ...data, usageLog: [], createdAt: new Date().toISOString().slice(0,10) });
+      : db.collection('inventory').add({ ...data, materialId: '', usageLog: [], createdAt: new Date().toISOString().slice(0,10) });
     op.then(() => { closeModal('modal-new-stock'); editingStockId = null; }).catch(err => alert('儲存失敗:' + err.message));
   }
   function deleteStock(id){
-    if(!confirm('確定要刪除這筆進貨與其使用紀錄嗎?無法復原。')) return;
+    if(!confirm('確定要刪除這筆手動登記的進貨嗎?(掛在這筆底下的使用紀錄也會一併刪除,無法復原)')) return;
     db.collection('inventory').doc(id).delete().catch(err => alert('刪除失敗:' + err.message));
   }
-  let usingStockId = null;
-  function openUseModal(id){
-    const s = inventory.find(x => x.id === id);
-    if(!s) return;
-    usingStockId = id;
-    document.getElementById('use-modal-title').textContent = '登記使用:' + (s.name || '');
-    document.getElementById('use-modal-info').innerHTML = `${escapeHTML(s.vendor||'')} ・ 目前剩餘 <b>${getStockRemain(s).toLocaleString()}</b> / 下單 ${(Number(s.orderQty)||0).toLocaleString()}`;
+
+  // 登記使用
+  let usingStockKey = null;
+  function openUseModal(i){
+    const g = stockGroups[i];
+    if(!g) return;
+    usingStockKey = g.key;
+    document.getElementById('use-modal-title').textContent = '登記使用:' + (g.name || '');
+    document.getElementById('use-modal-info').innerHTML = `${escapeHTML(g.vendor||'')}${g.partNo ? ' ・ 料號 ' + escapeHTML(g.partNo) : ''} ・ 目前剩餘 <b>${g.remain.toLocaleString()}</b> / 累計進貨 ${g.ordered.toLocaleString()}`;
     document.getElementById('us-qty').value = '';
     document.getElementById('us-date').value = new Date().toISOString().slice(0,10);
     document.getElementById('us-note').value = '';
@@ -2111,27 +2101,24 @@
     document.getElementById('modal-stock-use').classList.add('open');
   }
   function saveUsage(){
-    const s = inventory.find(x => x.id === usingStockId);
-    if(!s) return;
+    const g = stockGroups.find(x => x.key === usingStockKey);
+    if(!g) return;
     const qty = Number(document.getElementById('us-qty').value);
     const date = document.getElementById('us-date').value;
     if(!(qty > 0)){ alert('請輸入用掉的數量'); return; }
     if(!date){ alert('請選擇使用日期'); return; }
-    if(qty > getStockRemain(s) && !confirm('用量(' + qty + ')超過目前剩餘(' + getStockRemain(s) + '),仍要登記嗎?剩餘會變成負數。')) return;
-    const usageLog = [...(s.usageLog||[]), {
-      id: uid(), date, qty,
-      projectId: document.getElementById('us-project').value,
-      note: document.getElementById('us-note').value.trim()
-    }];
-    db.collection('inventory').doc(s.id).update({ usageLog })
-      .then(() => { closeModal('modal-stock-use'); usingStockId = null; })
-      .catch(err => alert('登記失敗:' + err.message));
+    if(qty > g.remain && !confirm('用量(' + qty + ')超過目前剩餘(' + g.remain + '),仍要登記嗎?剩餘會變成負數。')) return;
+    const usage = { id: uid(), date, qty, projectId: document.getElementById('us-project').value, note: document.getElementById('us-note').value.trim() };
+    const holder = g.docs[0];
+    const op = holder
+      ? db.collection('inventory').doc(holder.id).update({ usageLog: [...(holder.usageLog||[]), usage] })
+      : db.collection('inventory').add({ materialId: g.materialId, vendor: g.vendor, name: g.name, partNo: g.partNo, orderQty: 0, receiveDate: '', shipDate: '', note: '', usageLog: [usage], createdAt: new Date().toISOString().slice(0,10) });
+    op.then(() => { closeModal('modal-stock-use'); usingStockKey = null; }).catch(err => alert('登記失敗:' + err.message));
   }
-  function deleteUsage(stockId, usageId){
+  function deleteUsage(docId, usageId){
     if(!confirm('刪除這筆使用紀錄?庫存會自動加回。')) return;
-    const s = inventory.find(x => x.id === stockId);
-    const usageLog = (s.usageLog||[]).filter(u => u.id !== usageId);
-    db.collection('inventory').doc(stockId).update({ usageLog }).catch(err => alert('刪除失敗:' + err.message));
+    const d = inventory.find(x => x.id === docId); if(!d) return;
+    db.collection('inventory').doc(docId).update({ usageLog: (d.usageLog||[]).filter(u => u.id !== usageId) }).catch(err => alert('刪除失敗:' + err.message));
   }
 
   // ---------- materials ----------
@@ -2144,6 +2131,7 @@
   }
 
   function renderMaterials(){
+    stockGroups = buildStockGroups();
     populateProjectSelect('mf-project', true);
     const filter = document.getElementById('mf-project').value || 'all';
     let filtered = materials.filter(m => {
@@ -2166,6 +2154,7 @@
               <div class="material-field"><div class="lbl">單價</div><div class="val">${it.unitPrice ? 'NT$ ' + Number(it.unitPrice).toLocaleString() : '—'}</div></div>
               <div class="material-field"><div class="lbl">訂貨日期</div><div class="val">${it.orderDate || '—'}</div></div>
               <div class="material-field"><div class="lbl">進貨日期</div><div class="val">${it.receiveDate || '—'}</div></div>
+              ${it.shipDate ? `<div class="material-field"><div class="lbl">工廠出貨</div><div class="val">${it.shipDate}</div></div>` : ''}
             </div>
             ${stockLineHTML(m, s, it)}
           `).join('') || '<div class="empty-note" style="padding:0 0 6px;">尚無料號資料</div>'}
@@ -2206,7 +2195,7 @@
     block.innerHTML = `
       <button type="button" class="material-row-del" onclick="this.parentElement.remove()">✕ 移除</button>
       <div class="form-row"><label>供應商名稱</label><input type="text" class="mr-vendor" value="${escapeAttr((prefill && prefill.vendor) || '')}"></div>
-      <div class="form-row"><label>料號項目(料號 / 品名 / 數量 / 單價 / 訂貨日期 / 進貨日期)</label><div class="items-container"></div></div>
+      <div class="form-row"><label>料號項目(每一列是一次採購,同料號的數量會自動相加成庫存)</label><div class="items-container"></div></div>
       <button type="button" class="add-meeting-toggle" onclick="addSupplierItemRow(this)">+ 新增料號項目</button>
     `;
     container.appendChild(block);
@@ -2232,6 +2221,7 @@
       <div><label>單價</label><input type="number" step="any" class="ir-unitprice" value="${escapeAttr(p.unitPrice || '')}"></div>
       <div><label>訂貨日期</label><input type="date" class="ir-orderdate" value="${p.orderDate || ''}"></div>
       <div><label>進貨日期(廠商送到)</label><input type="date" class="ir-receivedate" value="${p.receiveDate || ''}"></div>
+      <div><label>工廠出貨日期(選填)</label><input type="date" class="ir-shipdate" value="${p.shipDate || ''}"></div>
       <button type="button" class="todo-row-del" onclick="this.parentElement.remove()">✕</button>
     `;
     container.appendChild(row);
@@ -2252,8 +2242,9 @@
         const unitPrice = row.querySelector('.ir-unitprice').value.trim();
         const orderDate = row.querySelector('.ir-orderdate').value;
         const receiveDate = row.querySelector('.ir-receivedate').value;
+        const shipDate = row.querySelector('.ir-shipdate').value;
         if(!partNo && !itemName && !quantity && !unitPrice) return;
-        items.push({ id: uid(), partNo, itemName, quantity, unitPrice, orderDate, receiveDate });
+        items.push({ id: uid(), partNo, itemName, quantity, unitPrice, orderDate, receiveDate, shipDate });
       });
       if(!vendor && items.length === 0) return;
       suppliers.push({ id: uid(), vendor, items });
