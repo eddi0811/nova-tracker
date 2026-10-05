@@ -346,6 +346,24 @@
   .stock-link-line{ font-size: 11px; color: var(--blue-deep); margin: -2px 0 8px 0; cursor: pointer; }
   .stock-link-line:hover{ text-decoration: underline; }
   .stock-link-line.none{ color: var(--ink-faint); cursor: default; text-decoration: none; }
+  .search-input{ border: 1px solid var(--line-strong); background: var(--panel); font-size: 13px; padding: 9px 12px; border-radius: 8px; min-width: 240px; flex: 1; max-width: 360px; }
+  .mat-block{ background: var(--panel); border: 1px solid var(--line); border-radius: 10px; margin-bottom: 10px; overflow: hidden; }
+  .mat-block-head{ display: flex; align-items: center; gap: 10px; padding: 12px 16px; cursor: pointer; flex-wrap: wrap; }
+  .mat-block-head:hover{ background: var(--panel-soft); }
+  .mat-block-name{ font-family: 'Noto Serif TC', serif; font-size: 15px; font-weight: 500; }
+  .mat-block-sub{ font-size: 11px; color: var(--ink-faint); }
+  .mat-block-sum{ margin-left: auto; font-size: 11.5px; color: var(--ink-soft); }
+  .mat-block-body{ display: none; padding: 0 12px 12px; overflow-x: auto; }
+  .mat-block.open .mat-block-body{ display: block; }
+  .mat-block.open .stock-chevron{ transform: rotate(90deg); }
+  .mat-table{ width: 100%; border-collapse: collapse; min-width: 720px; }
+  .mat-table th{ background: var(--panel-soft); text-align: left; font-size: 11px; color: var(--ink-soft); padding: 7px 9px; border: 1px solid var(--line); font-weight: 600; white-space: nowrap; }
+  .mat-table td{ font-size: 12.5px; padding: 7px 9px; border: 1px solid var(--line); vertical-align: top; }
+  .mat-table td.num{ text-align: right; font-family: 'JetBrains Mono', monospace; }
+  .mat-table td.date{ font-family: 'JetBrains Mono', monospace; white-space: nowrap; font-size: 12px; }
+  .mat-table td.vendor{ font-weight: 600; }
+  .mat-stock-cell{ color: var(--blue-deep); cursor: pointer; font-weight: 600; white-space: nowrap; }
+  .mat-stock-cell:hover{ text-decoration: underline; }
   .stock-actions{ display: flex; gap: 8px; margin-top: 12px; flex-wrap: wrap; }
   .stock-usage-row{ display: flex; gap: 10px; align-items: baseline; font-size: 12px; padding: 5px 0; border-top: 1px dashed var(--line); flex-wrap: wrap; }
   .stock-usage-row .u-date{ font-family: 'JetBrains Mono', monospace; color: var(--blue-deep); min-width: 80px; }
@@ -538,7 +556,7 @@
             <button class="primary-btn" onclick="openMaterialModal()">+ 新增物料</button>
           </div>
         </div>
-        <div class="filters-row"><select id="mf-project" onchange="renderMaterials()"></select></div>
+        <div class="filters-row"><select id="mf-project" onchange="renderMaterials()"></select><input id="mf-search" type="search" class="search-input" placeholder="搜尋廠商 / 料號 / 品名 / 產品" oninput="renderMaterials()"></div>
         <div id="material-list"></div>
       </div>
 
@@ -2211,46 +2229,88 @@
     document.getElementById(selectId).innerHTML = html;
   }
 
+  let openMaterialBlocks = new Set();
+  function toggleMaterialBlock(id){
+    if(openMaterialBlocks.has(id)) openMaterialBlocks.delete(id); else openMaterialBlocks.add(id);
+    const el = document.getElementById('matblock-' + id);
+    if(el) el.classList.toggle('open', openMaterialBlocks.has(id));
+  }
   function renderMaterials(){
     stockGroups = buildStockGroups();
+    const sel = document.getElementById('mf-project');
+    const prev = sel.value || 'all';
     populateProjectSelect('mf-project', true);
-    const filter = document.getElementById('mf-project').value || 'all';
+    sel.value = Array.from(sel.options).some(o => o.value === prev) ? prev : 'all';
+    const filter = sel.value || 'all';
+    const q = (document.getElementById('mf-search').value || '').trim().toLowerCase();
+    const has = (v) => String(v || '').toLowerCase().includes(q);
     let filtered = materials.filter(m => {
       if(filter === 'none') return !m.projectId;
       if(filter !== 'all') return m.projectId === filter;
       return true;
     });
     const listEl = document.getElementById('material-list');
-    if(filtered.length === 0){ listEl.innerHTML = '<div class="empty-note">沒有符合條件的物料。</div>'; return; }
-    listEl.innerHTML = filtered.map(m => {
+    const blocks = [];
+    filtered.forEach(m => {
       const proj = projects.find(p => p.id === m.projectId);
-      const suppliersHTML = (m.suppliers || []).map(s => `
-        <div style="margin-bottom:10px;">
-          <div style="font-size:12.5px;font-weight:500;color:var(--ink);margin-bottom:6px;">${escapeHTML(s.vendor) || '未填廠商'}</div>
-          ${(s.items || []).map(it => `
-            <div class="material-card" style="margin-bottom:6px;">
-              <div class="material-field"><div class="lbl">料號</div><div class="val">${escapeHTML(it.partNo) || '—'}</div></div>
-              <div class="material-field"><div class="lbl">品名</div><div class="val">${escapeHTML(it.itemName) || '—'}</div></div>
-              <div class="material-field"><div class="lbl">數量</div><div class="val">${escapeHTML(it.quantity) || '—'}</div></div>
-              <div class="material-field"><div class="lbl">單價</div><div class="val">${it.unitPrice ? 'NT$ ' + Number(it.unitPrice).toLocaleString() : '—'}</div></div>
-              <div class="material-field"><div class="lbl">訂貨日期</div><div class="val">${it.orderDate || '—'}</div></div>
-              <div class="material-field"><div class="lbl">進貨日期</div><div class="val">${it.receiveDate || '—'}</div></div>
-              ${it.shipDate ? `<div class="material-field"><div class="lbl">工廠出貨</div><div class="val">${it.shipDate}</div></div>` : ''}
-            </div>
-            ${stockLineHTML(m, s, it)}
-          `).join('') || '<div class="empty-note" style="padding:0 0 6px;">尚無料號資料</div>'}
-        </div>
-      `).join('');
-      return `
-        <div style="margin-bottom:22px;">
-          <div class="material-group-title" style="display:flex;align-items:center;justify-content:space-between;">
-            <span>${escapeHTML(m.productName)}${proj ? ` <span style="font-size:11px;color:var(--ink-faint);font-weight:400;">· ${escapeHTML(proj.name)}</span>` : ''}</span>
-            <span><button class="row-edit" onclick="openMaterialModal('${m.id}')" title="編輯">✎</button> <button class="row-del" onclick="deleteMaterial('${m.id}')" title="刪除">✕</button></span>
+      const productHit = !q || has(m.productName);
+      const rows = [];
+      (m.suppliers || []).forEach(sup => {
+        const items = (sup.items || []);
+        if(items.length === 0 && (productHit || has(sup.vendor))) rows.push({ sup, it: null, first: true });
+        items.forEach((it, idx) => {
+          if(productHit || has(sup.vendor) || has(it.partNo) || has(it.itemName)) rows.push({ sup, it, first: idx === 0 });
+        });
+      });
+      if(q && !productHit && rows.length === 0) return;
+      const lastIdx = {};
+      rows.forEach((r, i) => { if(r.it) lastIdx[stockKeyOf(m.id, r.sup.vendor, r.it.partNo, r.it.itemName)] = i; });
+      let prevSup = null;
+      const body = rows.map((r, i) => {
+        const showVendor = r.sup !== prevSup; prevSup = r.sup;
+        const it = r.it || {};
+        let stockCell = '';
+        if(r.it){
+          const key = stockKeyOf(m.id, r.sup.vendor, it.partNo, it.itemName);
+          if(lastIdx[key] === i){
+            const g = stockGroups.find(x => x.key === key);
+            stockCell = (g && g.ordered > 0)
+              ? `<span class="mat-stock-cell" onclick="goToInventoryFilter('m:${m.id}')" title="此料號合計:剩餘 ${g.remain.toLocaleString()} / 累計進貨 ${g.ordered.toLocaleString()}">📦 ${g.remain.toLocaleString()}</span>`
+              : '<span style="color:var(--ink-faint);">—</span>';
+          }
+        }
+        return `<tr>
+          <td class="vendor">${showVendor ? (escapeHTML(r.sup.vendor) || '未填廠商') : ''}</td>
+          <td>${escapeHTML(it.partNo) || '—'}</td>
+          <td>${escapeHTML(it.itemName) || '—'}</td>
+          <td class="num">${it.quantity ? Number(String(it.quantity).replace(/[^\d.]/g,'')).toLocaleString() || escapeHTML(it.quantity) : '—'}</td>
+          <td class="num">${it.unitPrice ? Number(it.unitPrice).toLocaleString() : '—'}</td>
+          <td class="date">${it.orderDate || '—'}</td>
+          <td class="date">${it.receiveDate || '—'}</td>
+          <td class="date">${it.shipDate || '—'}</td>
+          <td>${stockCell}</td>
+        </tr>`;
+      }).join('');
+      const vendorCount = (m.suppliers || []).length;
+      const purchaseCount = (m.suppliers || []).reduce((n, sup) => n + (sup.items || []).length, 0);
+      const remainSum = stockGroups.filter(g => g.materialId === m.id).reduce((n, g) => n + g.remain, 0);
+      const hasStock = stockGroups.some(g => g.materialId === m.id && g.ordered > 0);
+      const isOpen = q ? true : openMaterialBlocks.has(m.id);
+      blocks.push(`
+        <div class="mat-block ${isOpen ? 'open' : ''}" id="matblock-${m.id}">
+          <div class="mat-block-head" onclick="toggleMaterialBlock('${m.id}')">
+            <span class="stock-chevron">▸</span>
+            <span class="mat-block-name">${escapeHTML(m.productName)}</span>
+            ${proj ? `<span class="mat-block-sub">· ${escapeHTML(proj.name)}</span>` : ''}
+            <span class="mat-block-sum">${vendorCount} 家廠商 ・ ${purchaseCount} 筆採購${hasStock ? ' ・ 庫存剩 ' + remainSum.toLocaleString() : ''}</span>
+            <span onclick="event.stopPropagation()"><button class="row-edit" onclick="openMaterialModal('${m.id}')" title="編輯">✎</button> <button class="row-del" onclick="deleteMaterial('${m.id}')" title="刪除">✕</button></span>
           </div>
-          ${suppliersHTML || '<div class="empty-note">尚無供應商資料</div>'}
-        </div>
-      `;
-    }).join('');
+          <div class="mat-block-body">
+            ${rows.length ? `<table class="mat-table"><thead><tr><th>廠商</th><th>料號</th><th>品名</th><th>數量</th><th>單價</th><th>訂貨日</th><th>進貨日</th><th>工廠出貨</th><th>庫存(合計剩餘)</th></tr></thead><tbody>${body}</tbody></table>` : '<div class="empty-note">尚無供應商資料</div>'}
+          </div>
+        </div>`);
+    });
+    listEl.innerHTML = blocks.length ? blocks.join('') : '<div class="empty-note">沒有符合條件的物料。</div>';
   }
 
   function openMaterialModal(materialId){
