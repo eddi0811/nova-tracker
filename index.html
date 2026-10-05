@@ -338,6 +338,9 @@
   .stock-history .overview-table{ margin-bottom: 14px; }
   .stock-sum{ display: flex; gap: 22px; flex-wrap: wrap; font-size: 12.5px; margin-bottom: 4px; }
   .stock-sum b{ font-family: 'JetBrains Mono', monospace; font-size: 15px; }
+  .stock-link-line{ font-size: 11px; color: var(--blue-deep); margin: -2px 0 8px 0; cursor: pointer; }
+  .stock-link-line:hover{ text-decoration: underline; }
+  .stock-link-line.none{ color: var(--ink-faint); cursor: default; text-decoration: none; }
   .stock-actions{ display: flex; gap: 8px; margin-top: 12px; flex-wrap: wrap; }
   .stock-usage-row{ display: flex; gap: 10px; align-items: baseline; font-size: 12px; padding: 5px 0; border-top: 1px dashed var(--line); flex-wrap: wrap; }
   .stock-usage-row .u-date{ font-family: 'JetBrains Mono', monospace; color: var(--blue-deep); min-width: 80px; }
@@ -532,6 +535,7 @@
           <div class="view-title">庫存表</div>
           <button class="primary-btn" onclick="openStockModal()">+ 新增進貨</button>
         </div>
+        <div class="filters-row"><select id="stock-filter" onchange="renderInventory()"></select></div>
         <div class="stat-row four" id="stock-stats"></div>
         <div id="stock-list"></div>
       </div>
@@ -653,8 +657,10 @@
   <div class="modal-overlay" id="modal-new-stock">
     <div class="modal">
       <h3 id="stock-modal-title">新增進貨</h3>
+      <div class="form-row"><label>從物料對應帶入(選填)</label><select id="ns-material" onchange="onStockMaterialPick()"></select></div>
       <div class="form-row"><label>廠商</label><input id="ns-vendor" type="text"></div>
       <div class="form-row"><label>品名</label><input id="ns-name" type="text" placeholder="例如:外盒"></div>
+      <div class="form-row"><label>料號(選填)</label><input id="ns-partno" type="text"></div>
       <div class="form-row"><label>工廠下單數量</label><input id="ns-qty" type="number" min="0"></div>
       <div class="form-row"><label>進貨日期(廠商送物料的日子)</label><input id="ns-receive" type="date"></div>
       <div class="form-row"><label>工廠出貨日期(選填)</label><input id="ns-ship" type="date"></div>
@@ -785,12 +791,14 @@
     unsubscribers.push(db.collection('materials').onSnapshot(snap => {
       materials = snap.docs.map(d => ({ id: d.id, ...d.data() }));
       if(currentTab === 'materials') renderMaterials();
+      if(currentTab === 'inventory') renderInventory();
     }, err => console.error('materials listener', err)));
 
     unsubscribers.push(db.collection('inventory').onSnapshot(snap => {
       inventory = snap.docs.map(d => ({ id: d.id, ...d.data() }));
       if(currentTab === 'home') renderHome();
       if(currentTab === 'inventory') renderInventory();
+      if(currentTab === 'materials') renderMaterials();
     }, err => console.error('inventory listener', err)));
 
     unsubscribers.push(db.collection('standaloneTodos').onSnapshot(snap => {
@@ -1866,15 +1874,24 @@
   function renderInventory(){
     const list = document.getElementById('stock-list');
     const statsEl = document.getElementById('stock-stats');
-    const sorted = [...inventory].sort((a,b) => (b.receiveDate||'').localeCompare(a.receiveDate||''));
-    const totalOrder = inventory.reduce((s,x) => s + (Number(x.orderQty)||0), 0);
-    const totalUsed = inventory.reduce((s,x) => s + getStockUsed(x), 0);
+    populateStockFilter();
+    const flt = document.getElementById('stock-filter').value || 'all';
+    const visible = inventory.filter(x => {
+      if(flt === 'all') return true;
+      if(flt === 'none') return !x.materialId;
+      if(flt.startsWith('m:')) return x.materialId === flt.slice(2);
+      if(flt.startsWith('p:')){ const m = materials.find(mm => mm.id === x.materialId); return !!m && m.projectId === flt.slice(2); }
+      return true;
+    });
+    const sorted = [...visible].sort((a,b) => (b.receiveDate||'').localeCompare(a.receiveDate||''));
+    const totalOrder = visible.reduce((s,x) => s + (Number(x.orderQty)||0), 0);
+    const totalUsed = visible.reduce((s,x) => s + getStockUsed(x), 0);
     statsEl.innerHTML = `
-      <div class="stat-card"><div class="stat-label">進貨批次</div><div class="stat-num">${inventory.length}</div></div>
+      <div class="stat-card"><div class="stat-label">進貨批次</div><div class="stat-num">${visible.length}</div></div>
       <div class="stat-card"><div class="stat-label">下單總量</div><div class="stat-num">${totalOrder.toLocaleString()}</div></div>
       <div class="stat-card"><div class="stat-label">已使用</div><div class="stat-num">${totalUsed.toLocaleString()}</div></div>
       <div class="stat-card"><div class="stat-label">目前剩餘</div><div class="stat-num">${(totalOrder-totalUsed).toLocaleString()}</div></div>`;
-    if(sorted.length === 0){ list.innerHTML = '<div class="empty-note">還沒有進貨紀錄,點右上角「+ 新增進貨」開始記錄。</div>'; return; }
+    if(sorted.length === 0){ list.innerHTML = '<div class="empty-note">沒有符合條件的進貨紀錄,可點右上角「+ 新增進貨」。</div>'; return; }
     list.innerHTML = sorted.map(s => {
       const order = Number(s.orderQty)||0, used = getStockUsed(s), remain = order - used;
       const pct = order > 0 ? Math.max(0, Math.min(100, Math.round(remain / order * 100))) : 0;
@@ -1894,7 +1911,7 @@
           <div class="stock-head" onclick="toggleStockHistory('${s.id}')" title="點擊展開/收合歷史一覽表">
             <span class="stock-chevron">▸</span>
             <span class="stock-name">${escapeHTML(s.name || '')}</span>
-            <span class="stock-vendor">${escapeHTML(s.vendor || '')}</span>
+            <span class="stock-vendor">${escapeHTML(s.vendor || '')}${s.partNo ? ' ・ 料號 ' + escapeHTML(s.partNo) : ''}${stockProductLabel(s) ? ' ・ ' + escapeHTML(stockProductLabel(s)) : ''}</span>
             ${empty ? '<span class="status-badge unpaid">已用完</span>' : ''}
           </div>
           <div class="stock-dates">進貨 ${s.receiveDate || '—'}${s.shipDate ? ' ・ 工廠出貨 ' + s.shipDate : ''}${s.note ? ' ・ ' + escapeHTML(s.note) : ''}</div>
@@ -1919,6 +1936,63 @@
           </div>
         </div>`;
     }).join('');
+  }
+  function stockProductLabel(s){
+    const m = s.materialId ? materials.find(x => x.id === s.materialId) : null;
+    if(!m) return '';
+    const proj = m.projectId ? projects.find(p => p.id === m.projectId) : null;
+    return '產品:' + (m.productName || '') + (proj ? '(' + proj.name + ')' : '');
+  }
+  function populateStockFilter(){
+    const sel = document.getElementById('stock-filter');
+    const cur = sel.value || 'all';
+    let html = '<option value="all">全部產品/專案</option><option value="none">未歸屬產品</option>';
+    html += materials.map(m => `<option value="m:${m.id}">產品:${escapeHTML(m.productName||'')}</option>`).join('');
+    html += projects.filter(p => p.type !== 'paid' && materials.some(m => m.projectId === p.id)).map(p => `<option value="p:${p.id}">專案:${escapeHTML(p.name)}</option>`).join('');
+    sel.innerHTML = html;
+    sel.value = Array.from(sel.options).some(o => o.value === cur) ? cur : 'all';
+  }
+  function goToInventoryFilter(value){
+    switchTab('inventory');
+    const sel = document.getElementById('stock-filter');
+    sel.value = value;
+    renderInventory();
+  }
+  let nsMaterialId = '';
+  function populateStockMaterialSelect(selected){
+    let html = '<option value="">(不帶入,手動輸入)</option>';
+    materials.forEach(m => {
+      (m.suppliers||[]).forEach((sup, si) => {
+        (sup.items||[]).forEach((it, ii) => {
+          const label = `${m.productName||''} › ${sup.vendor||'未填廠商'} › ${it.itemName||'未填品名'}${it.partNo ? '(' + it.partNo + ')' : ''}`;
+          html += `<option value="${m.id}|${si}|${ii}">${escapeHTML(label)}</option>`;
+        });
+      });
+    });
+    const sel = document.getElementById('ns-material');
+    sel.innerHTML = html;
+    sel.value = selected || '';
+  }
+  function onStockMaterialPick(){
+    const v = document.getElementById('ns-material').value;
+    if(!v){ return; }
+    const [mid, si, ii] = v.split('|');
+    const m = materials.find(x => x.id === mid); if(!m) return;
+    const sup = (m.suppliers||[])[Number(si)]; const it = sup && (sup.items||[])[Number(ii)];
+    if(!sup || !it) return;
+    nsMaterialId = mid;
+    document.getElementById('ns-vendor').value = sup.vendor || '';
+    document.getElementById('ns-name').value = it.itemName || '';
+    document.getElementById('ns-partno').value = it.partNo || '';
+    if(!document.getElementById('ns-qty').value && it.quantity) document.getElementById('ns-qty').value = Number(String(it.quantity).replace(/[^\d.]/g,'')) || '';
+  }
+  function stockLineHTML(m, sup, it){
+    const batches = inventory.filter(x => x.materialId === m.id && (x.vendor||'').trim() === (sup.vendor||'').trim() &&
+      ((x.partNo && it.partNo) ? x.partNo === it.partNo : (x.name||'').trim() === (it.itemName||'').trim()));
+    if(batches.length === 0) return `<div class="stock-link-line none">📦 尚未登記進貨</div>`;
+    const order = batches.reduce((a,b) => a + (Number(b.orderQty)||0), 0);
+    const used = batches.reduce((a,b) => a + getStockUsed(b), 0);
+    return `<div class="stock-link-line" onclick="goToInventoryFilter('m:${m.id}')">📦 目前庫存:剩餘 ${(order-used).toLocaleString()} / 下單 ${order.toLocaleString()}(點擊查看)</div>`;
   }
   let openStockCards = new Set();
   function toggleStockHistory(id){
@@ -1983,6 +2057,9 @@
     editingStockId = id || null;
     const s = id ? inventory.find(x => x.id === id) : null;
     document.getElementById('stock-modal-title').textContent = s ? '編輯進貨' : '新增進貨';
+    nsMaterialId = s ? (s.materialId || '') : '';
+    populateStockMaterialSelect('');
+    document.getElementById('ns-partno').value = s ? (s.partNo||'') : '';
     document.getElementById('ns-vendor').value = s ? (s.vendor||'') : '';
     document.getElementById('ns-name').value = s ? (s.name||'') : '';
     document.getElementById('ns-qty').value = s ? (s.orderQty||'') : '';
@@ -1998,7 +2075,7 @@
     if(!name){ alert('請輸入品名'); return; }
     if(!(orderQty >= 0) || document.getElementById('ns-qty').value === ''){ alert('請輸入工廠下單數量'); return; }
     const data = {
-      vendor, name, orderQty,
+      vendor, name, orderQty, partNo: document.getElementById('ns-partno').value.trim(), materialId: nsMaterialId || '',
       receiveDate: document.getElementById('ns-receive').value,
       shipDate: document.getElementById('ns-ship').value,
       note: document.getElementById('ns-note').value.trim()
@@ -2082,6 +2159,7 @@
               <div class="material-field"><div class="lbl">單價</div><div class="val">${it.unitPrice ? 'NT$ ' + Number(it.unitPrice).toLocaleString() : '—'}</div></div>
               <div class="material-field"><div class="lbl">訂貨日期</div><div class="val">${it.orderDate || '—'}</div></div>
             </div>
+            ${stockLineHTML(m, s, it)}
           `).join('') || '<div class="empty-note" style="padding:0 0 6px;">尚無料號資料</div>'}
         </div>
       `).join('');
