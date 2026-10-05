@@ -363,6 +363,12 @@
   .type-opt{ flex: 1; border: 1px solid var(--line-strong); border-radius: 8px; padding: 12px 10px; text-align: center; font-size: 12.5px; cursor: pointer; color: var(--ink-soft); }
   .type-opt.selected{ border-color: var(--blue-deep); color: var(--blue-deep); background: var(--blue-pale); font-weight: 500; }
   .modal-actions{ display: flex; justify-content: flex-end; gap: 8px; margin-top: 6px; }
+  .modal.wide{ max-width: 600px; }
+  .mat-item-row{ display: grid !important; grid-template-columns: repeat(3, 1fr); gap: 8px 10px; padding: 10px 12px; margin-bottom: 8px; border: 1px solid var(--line); border-radius: 8px; background: var(--panel); position: relative; }
+  .mat-item-row label{ display: block; font-size: 10px; color: var(--ink-faint); margin-bottom: 3px; }
+  .mat-item-row input{ width: 100%; min-width: 0; box-sizing: border-box; }
+  .mat-item-row .todo-row-del{ position: absolute; top: 4px; right: 6px; }
+  @media (max-width: 560px){ .mat-item-row{ grid-template-columns: 1fr 1fr; } }
   .material-row-form{ border: 1px solid var(--line-strong); border-radius: 8px; padding: 12px 14px 4px; margin-bottom: 10px; position: relative; background: var(--panel-soft); }
   .material-row-form .form-row{ margin-bottom: 8px; }
   .material-row-del{ position: absolute; top: 8px; right: 10px; background: none; border: none; color: var(--ink-faint); cursor: pointer; font-size: 13px; }
@@ -688,7 +694,7 @@
   </div>
 
   <div class="modal-overlay" id="modal-new-material">
-    <div class="modal">
+    <div class="modal wide">
       <h3 id="material-modal-title">新增物料</h3>
       <div class="form-row"><label>產品名稱</label><input id="nm-product" type="text"></div>
       <div class="form-row"><label>關聯專案</label><select id="nm-project"></select></div>
@@ -1984,6 +1990,7 @@
     document.getElementById('ns-vendor').value = sup.vendor || '';
     document.getElementById('ns-name').value = it.itemName || '';
     document.getElementById('ns-partno').value = it.partNo || '';
+    if(it.receiveDate) document.getElementById('ns-receive').value = it.receiveDate;
     if(!document.getElementById('ns-qty').value && it.quantity) document.getElementById('ns-qty').value = Number(String(it.quantity).replace(/[^\d.]/g,'')) || '';
   }
   function stockLineHTML(m, sup, it){
@@ -2158,6 +2165,7 @@
               <div class="material-field"><div class="lbl">數量</div><div class="val">${escapeHTML(it.quantity) || '—'}</div></div>
               <div class="material-field"><div class="lbl">單價</div><div class="val">${it.unitPrice ? 'NT$ ' + Number(it.unitPrice).toLocaleString() : '—'}</div></div>
               <div class="material-field"><div class="lbl">訂貨日期</div><div class="val">${it.orderDate || '—'}</div></div>
+              <div class="material-field"><div class="lbl">進貨日期</div><div class="val">${it.receiveDate || '—'}</div></div>
             </div>
             ${stockLineHTML(m, s, it)}
           `).join('') || '<div class="empty-note" style="padding:0 0 6px;">尚無料號資料</div>'}
@@ -2198,7 +2206,7 @@
     block.innerHTML = `
       <button type="button" class="material-row-del" onclick="this.parentElement.remove()">✕ 移除</button>
       <div class="form-row"><label>供應商名稱</label><input type="text" class="mr-vendor" value="${escapeAttr((prefill && prefill.vendor) || '')}"></div>
-      <div class="form-row"><label>料號 / 品名 / 數量 / 訂貨日期</label><div class="items-container"></div></div>
+      <div class="form-row"><label>料號項目(料號 / 品名 / 數量 / 單價 / 訂貨日期 / 進貨日期)</label><div class="items-container"></div></div>
       <button type="button" class="add-meeting-toggle" onclick="addSupplierItemRow(this)">+ 新增料號項目</button>
     `;
     container.appendChild(block);
@@ -2216,13 +2224,14 @@
   function addItemRowTo(container, prefill){
     const p = prefill || {};
     const row = document.createElement('div');
-    row.className = 'todo-row';
+    row.className = 'todo-row mat-item-row';
     row.innerHTML = `
-      <input type="text" class="ir-partno" placeholder="料號" value="${escapeAttr(p.partNo || '')}">
-      <input type="text" class="ir-itemname" placeholder="品名" value="${escapeAttr(p.itemName || '')}">
-      <input type="text" class="ir-qty" placeholder="數量" value="${escapeAttr(p.quantity || '')}">
-      <input type="number" class="ir-unitprice" placeholder="單價" value="${escapeAttr(p.unitPrice || '')}">
-      <input type="date" class="ir-orderdate" value="${p.orderDate || ''}">
+      <div><label>料號</label><input type="text" class="ir-partno" value="${escapeAttr(p.partNo || '')}"></div>
+      <div><label>品名</label><input type="text" class="ir-itemname" value="${escapeAttr(p.itemName || '')}"></div>
+      <div><label>數量</label><input type="number" min="0" class="ir-qty" placeholder="例如 3030" value="${escapeAttr(p.quantity || '')}"></div>
+      <div><label>單價</label><input type="number" step="any" class="ir-unitprice" value="${escapeAttr(p.unitPrice || '')}"></div>
+      <div><label>訂貨日期</label><input type="date" class="ir-orderdate" value="${p.orderDate || ''}"></div>
+      <div><label>進貨日期(廠商送到)</label><input type="date" class="ir-receivedate" value="${p.receiveDate || ''}"></div>
       <button type="button" class="todo-row-del" onclick="this.parentElement.remove()">✕</button>
     `;
     container.appendChild(row);
@@ -2242,8 +2251,9 @@
         const quantity = row.querySelector('.ir-qty').value.trim();
         const unitPrice = row.querySelector('.ir-unitprice').value.trim();
         const orderDate = row.querySelector('.ir-orderdate').value;
+        const receiveDate = row.querySelector('.ir-receivedate').value;
         if(!partNo && !itemName && !quantity && !unitPrice) return;
-        items.push({ id: uid(), partNo, itemName, quantity, unitPrice, orderDate });
+        items.push({ id: uid(), partNo, itemName, quantity, unitPrice, orderDate, receiveDate });
       });
       if(!vendor && items.length === 0) return;
       suppliers.push({ id: uid(), vendor, items });
@@ -2272,14 +2282,15 @@
       const suppliersHTML = (m.suppliers || []).map(s => `
         <p style="margin:10px 0 4px;font-size:13px;font-weight:600;">${escapeHTML(s.vendor) || '未填廠商'}</p>
         <table style="width:100%;border-collapse:collapse;font-size:12px;margin-bottom:8px;">
-          <tr style="text-align:left;color:#888;"><th style="padding:4px 8px 4px 0;">料號</th><th style="padding:4px 8px;">品名</th><th style="padding:4px 8px;">數量</th><th style="padding:4px 8px;">單價</th><th style="padding:4px 0;">訂貨日期</th></tr>
+          <tr style="text-align:left;color:#888;"><th style="padding:4px 8px 4px 0;">料號</th><th style="padding:4px 8px;">品名</th><th style="padding:4px 8px;">數量</th><th style="padding:4px 8px;">單價</th><th style="padding:4px 8px;">訂貨日期</th><th style="padding:4px 0;">進貨日期</th></tr>
           ${(s.items || []).map(it => `
             <tr style="border-top:1px solid #eee;">
               <td style="padding:6px 8px 6px 0;">${escapeHTML(it.partNo) || '—'}</td>
               <td style="padding:6px 8px;">${escapeHTML(it.itemName) || '—'}</td>
               <td style="padding:6px 8px;">${escapeHTML(it.quantity) || '—'}</td>
               <td style="padding:6px 8px;">${it.unitPrice ? 'NT$ ' + Number(it.unitPrice).toLocaleString() : '—'}</td>
-              <td style="padding:6px 0;">${it.orderDate || '—'}</td>
+              <td style="padding:6px 8px;">${it.orderDate || '—'}</td>
+              <td style="padding:6px 0;">${it.receiveDate || '—'}</td>
             </tr>`).join('')}
         </table>
       `).join('');
