@@ -220,7 +220,6 @@
   .cal-bar.cont-r{ border-top-right-radius: 0; border-bottom-right-radius: 0; margin-right: -3px; }
   .cal-bar.done{ opacity: .55; text-decoration: line-through; }
   .cal-bar-more{ font-size: 10px; color: var(--ink-faint); padding-left: 6px; }
-  .cal-list-row.past{ opacity: .5; }
   .cal-list-row.is-today{ background: #FBF3E6; }
   .cal-list-tag{ font-size: 10.5px; color: var(--ink-faint); border: 1px solid var(--line); border-radius: 4px; padding: 0 5px; }
   .cal-list-row{ display: flex; align-items: baseline; gap: 10px; padding: 6px 2px; border-bottom: 1px solid var(--line); font-size: 12.5px; flex-wrap: wrap; }
@@ -1039,7 +1038,7 @@
     const monthEvents = filtered.filter(e => e.date && e.date.startsWith(monthPrefix)).sort((a,b) => a.date.localeCompare(b.date));
     const listEl = document.getElementById('home-cal-list');
     listEl.innerHTML = monthEvents.length ? monthEvents.map(e => `
-      <div class="cal-list-row ${e.date < todayStr ? 'past' : (e.date === todayStr ? 'is-today' : '')}">
+      <div class="cal-list-row ${e.date === todayStr ? 'is-today' : ''}">
         <span class="cal-list-date">${e.date.slice(5)}</span>
         <span class="cal-dot ${typeColor[e.type]||''}"></span>
         <span class="cal-list-tag">${EVENT_TYPE_LABEL[e.type] || ''}</span>
