@@ -193,6 +193,36 @@
   .reminder-row .r-text{ flex: 1; }
   .calendar-legend{ display: flex; gap: 16px; flex-wrap: wrap; font-size: 11px; color: var(--ink-soft); margin-top: 12px; }
   .calendar-legend span{ display: flex; align-items: center; gap: 5px; }
+  .mbar-title{ font-size: 12px; font-weight: 600; color: var(--ink-soft); margin: 4px 0 8px; }
+  .mbar-wrap{ overflow-x: auto; margin-bottom: 16px; padding-bottom: 4px; }
+  .mbar-body{ position: relative; min-width: 560px; }
+  .mbar-axis{ position: relative; height: 18px; margin-left: 130px; border-bottom: 1px solid var(--line); }
+  .mbar-tick{ position: absolute; top: 0; font-size: 10px; color: var(--ink-faint); border-left: 1px dashed var(--line); padding-left: 3px; height: 18px; }
+  .mbar-row{ display: flex; align-items: center; min-height: 28px; border-bottom: 1px solid var(--line); cursor: pointer; }
+  .mbar-row:hover{ background: var(--panel-soft); }
+  .mbar-label{ width: 130px; flex: 0 0 130px; font-size: 12px; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; padding-right: 8px; }
+  .mbar-track{ position: relative; flex: 1 1 auto; height: 16px; }
+  .mbar{ position: absolute; top: 0; height: 16px; border-radius: 5px; background: var(--line-strong); overflow: hidden; }
+  .mbar.overdue{ background: #E9CFC8; }
+  .mbar.done{ opacity: .55; }
+  .mbar-fill{ position: absolute; left: 0; top: 0; bottom: 0; background: var(--blue); opacity: .85; }
+  .mbar-pct{ position: relative; z-index: 1; font-size: 10px; color: #fff; font-weight: 600; margin-left: 5px; line-height: 16px; text-shadow: 0 1px 2px rgba(0,0,0,.35); }
+  .mbar-today{ position: absolute; top: 18px; bottom: 0; width: 2px; background: #C9A355; z-index: 2; }
+  .cal-weeks{ display: flex; flex-direction: column; gap: 4px; }
+  .cal-week{ position: relative; }
+  .cal-week-bg{ position: absolute; inset: 0; display: grid; grid-template-columns: repeat(7, 1fr); gap: 4px; }
+  .cal-week-body{ position: relative; z-index: 1; display: grid; grid-template-columns: repeat(7, 1fr); column-gap: 4px; row-gap: 2px; padding: 4px 0 6px; min-height: 64px; align-content: start; pointer-events: none; }
+  .cal-week-body > *{ pointer-events: auto; }
+  .cal-week-body .cal-daynum{ padding-left: 6px; }
+  .cal-week-body .cal-dots{ padding-left: 6px; }
+  .cal-bar{ font-size: 10.5px; line-height: 18px; height: 18px; padding: 0 6px; border-radius: 4px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; color: #2f3a40; cursor: pointer; margin: 0 1px; }
+  .cal-bar.cont-l{ border-top-left-radius: 0; border-bottom-left-radius: 0; margin-left: -3px; }
+  .cal-bar.cont-r{ border-top-right-radius: 0; border-bottom-right-radius: 0; margin-right: -3px; }
+  .cal-bar.done{ opacity: .55; text-decoration: line-through; }
+  .cal-bar-more{ font-size: 10px; color: var(--ink-faint); padding-left: 6px; }
+  .cal-list-row.past{ opacity: .5; }
+  .cal-list-row.is-today{ background: #FBF3E6; }
+  .cal-list-tag{ font-size: 10.5px; color: var(--ink-faint); border: 1px solid var(--line); border-radius: 4px; padding: 0 5px; }
   .cal-list-row{ display: flex; align-items: baseline; gap: 10px; padding: 6px 2px; border-bottom: 1px solid var(--line); font-size: 12.5px; flex-wrap: wrap; }
   .cal-list-date{ font-family: 'JetBrains Mono', monospace; color: var(--blue-deep); font-weight: 600; min-width: 42px; }
   .cal-list-proj{ color: var(--ink-soft); font-size: 11.5px; }
@@ -461,11 +491,12 @@
               <button class="ghost-btn" onclick="homeCalNextMonth()">▶</button>
             </div>
             <div id="home-cal-filter-label" class="calendar-filter-label"></div>
+            <button class="ghost-btn" onclick="exportCalendarPDF()">⬇ 匯出本月 PDF</button>
           </div>
           <div class="calendar-weekdays">
             <div>一</div><div>二</div><div>三</div><div>四</div><div>五</div><div>六</div><div>日</div>
           </div>
-          <div class="calendar-grid" id="home-cal-grid"></div>
+          <div class="cal-weeks" id="home-cal-grid"></div>
           <div class="calendar-legend">
             <span><span class="cal-dot cal-dot-blue"></span>細項起訖</span>
             <span><span class="cal-dot cal-dot-sage"></span>會議</span>
@@ -883,8 +914,9 @@
     projects.forEach(p => {
       if(p.type === 'paid') return;
       (p.items||[]).forEach(item => {
-        if(item.start) events.push({ date: item.start, projectId: p.id, projectName: p.name, type: 'item-start', text: item.name + ' 開始' });
-        if(item.due) events.push({ date: item.due, projectId: p.id, projectName: p.name, type: 'item-due', text: item.name + ' 截止' });
+        const inBar = !!(item.start && item.due);
+        if(item.start) events.push({ date: item.start, projectId: p.id, projectName: p.name, type: 'item-start', text: item.name + ' 開始', inBar });
+        if(item.due) events.push({ date: item.due, projectId: p.id, projectName: p.name, type: 'item-due', text: item.name + ' 截止', inBar });
         (item.reminders||[]).forEach(r => {
           if(!r.done && r.date) events.push({ date: r.date, projectId: p.id, projectName: p.name, type: 'reminder', text: '提醒:' + r.text + '(' + item.name + ')' });
         });
@@ -921,13 +953,14 @@
     const events = buildAllEvents();
     const todayStr = new Date().toISOString().slice(0,10);
     const byProject = {};
-    events.forEach(e => { if(e.projectId){ (byProject[e.projectId] = byProject[e.projectId] || []).push(e); } });
+    const DEADLINE_TYPES = ['item-due', 'todo', 'payment', 'reminder'];
+    events.forEach(e => { if(e.projectId && DEADLINE_TYPES.includes(e.type)){ (byProject[e.projectId] = byProject[e.projectId] || []).push(e); } });
     const rows = projects.filter(p => !p.completed).map(p => {
       const list = (byProject[p.id]||[]).slice().sort((a,b) => a.date.localeCompare(b.date));
       const overdue = list.filter(e => e.date < todayStr);
       const upcoming = list.filter(e => e.date >= todayStr);
       const soonest = overdue.length ? overdue[0] : (upcoming[0] || null);
-      return { p, soonest, isOverdue: overdue.length > 0 };
+      return { p, soonest, isOverdue: overdue.length > 0, overdueCount: overdue.length };
     }).filter(r => r.soonest);
     rows.sort((a,b) => {
       if(a.isOverdue !== b.isOverdue) return a.isOverdue ? -1 : 1;
@@ -941,7 +974,7 @@
       return `
         <div class="home-alert-row ${r.isOverdue ? 'overdue' : ''}" onclick="openProject('${r.p.id}')">
           <span class="home-alert-name">${escapeHTML(r.p.name)}</span>
-          <span class="home-alert-meta">${prog ? prog.pct + '% · ' : ''}${r.isOverdue ? '已逾期:' : '最近到期:'}${r.soonest.date} ${escapeHTML(r.soonest.text)}</span>
+          <span class="home-alert-meta">${prog ? prog.pct + '% · ' : ''}${r.isOverdue ? '已逾期' + (r.overdueCount > 1 ? ' ' + r.overdueCount + ' 項,最早:' : ':') : '最近到期:'}${r.soonest.date} ${escapeHTML(r.soonest.text)}</span>
         </div>
       `;
     }).join('');
@@ -975,25 +1008,41 @@
     const daysInMonth = new Date(year, month + 1, 0).getDate();
     const todayStr = new Date().toISOString().slice(0,10);
     const dayTypes = {};
-    filtered.forEach(e => { (dayTypes[e.date] = dayTypes[e.date] || new Set()).add(e.type); });
+    filtered.forEach(e => { if(e.inBar) return; (dayTypes[e.date] = dayTypes[e.date] || new Set()).add(e.type); });
     const typeColor = { 'item-start':'cal-dot-blue', 'item-due':'cal-dot-blue', 'meeting':'cal-dot-sage', 'todo':'cal-dot-clay', 'payment':'cal-dot-gold', 'reminder':'cal-dot-red', 'stock-in':'cal-dot-stock', 'stock-ship':'cal-dot-ship' };
-    let cells = '';
-    for(let i=0;i<startWeekday;i++) cells += `<div class="cal-cell empty"></div>`;
-    for(let d=1; d<=daysInMonth; d++){
-      const dateStr = `${year}-${String(month+1).padStart(2,'0')}-${String(d).padStart(2,'0')}`;
-      const types = dayTypes[dateStr] ? Array.from(dayTypes[dateStr]) : [];
-      const dots = types.map(t => `<span class="cal-dot ${typeColor[t]||''}"></span>`).join('');
-      cells += `<div class="cal-cell ${dateStr === todayStr ? 'today' : ''}"><div class="cal-daynum">${d}</div><div class="cal-dots">${dots}</div></div>`;
-    }
-    document.getElementById('home-cal-grid').innerHTML = cells;
+    const weeks = layoutMonthWeeks(year, month);
+    const MAXLANES = 5;
+    let weeksHTML = '';
+    weeks.forEach(w => {
+      const bg = w.days.map(d => `<div class="cal-cell ${d && d.dateStr === todayStr ? 'today' : ''} ${d ? '' : 'empty'}"></div>`).join('');
+      let body = '';
+      w.days.forEach((d, c) => { if(d) body += `<div class="cal-daynum" style="grid-row:1;grid-column:${c+1};">${d.day}</div>`; });
+      const visible = w.segs.filter(s => s.lane < MAXLANES);
+      visible.forEach(s => {
+        const b = s.bar;
+        body += `<div class="cal-bar ${b.overdue ? 'overdue' : ''} ${b.done ? 'done' : ''} ${s.contL ? 'cont-l' : ''} ${s.contR ? 'cont-r' : ''}" style="grid-row:${s.lane+2};grid-column:${s.colStart} / ${s.colEnd+1};background:${b.overdue ? '#E9CFC8' : b.color};" title="${escapeAttr(b.p.name + ' · ' + b.item.name + '(' + b.start + ' → ' + b.due + ')')}" onclick="openProject('${b.p.id}')">${escapeHTML(b.p.name + ' ' + b.item.name)}</div>`;
+      });
+      const hidden = w.segs.length - visible.length;
+      const usedLanes = Math.min(MAXLANES, w.laneCount);
+      if(hidden > 0) body += `<div class="cal-bar-more" style="grid-row:${usedLanes+2};grid-column:1 / 8;">…另 ${hidden} 條任務橫條未顯示(見下方事項一覽)</div>`;
+      const dotRow = usedLanes + 2 + (hidden > 0 ? 1 : 0);
+      w.days.forEach((d, c) => {
+        if(!d) return;
+        const types = dayTypes[d.dateStr] ? Array.from(dayTypes[d.dateStr]) : [];
+        body += `<div class="cal-dots" style="grid-row:${dotRow};grid-column:${c+1};">${types.map(t => `<span class="cal-dot ${typeColor[t]||''}"></span>`).join('')}</div>`;
+      });
+      weeksHTML += `<div class="cal-week"><div class="cal-week-bg">${bg}</div><div class="cal-week-body">${body}</div></div>`;
+    });
+    document.getElementById('home-cal-grid').innerHTML = weeksHTML;
     document.getElementById('home-cal-label').textContent = `${year}年${month+1}月`;
     const monthPrefix = `${year}-${String(month+1).padStart(2,'0')}`;
     const monthEvents = filtered.filter(e => e.date && e.date.startsWith(monthPrefix)).sort((a,b) => a.date.localeCompare(b.date));
     const listEl = document.getElementById('home-cal-list');
     listEl.innerHTML = monthEvents.length ? monthEvents.map(e => `
-      <div class="cal-list-row">
+      <div class="cal-list-row ${e.date < todayStr ? 'past' : (e.date === todayStr ? 'is-today' : '')}">
         <span class="cal-list-date">${e.date.slice(5)}</span>
         <span class="cal-dot ${typeColor[e.type]||''}"></span>
+        <span class="cal-list-tag">${EVENT_TYPE_LABEL[e.type] || ''}</span>
         <span class="cal-list-proj">${escapeHTML(e.projectName)}</span>
         <span class="cal-list-text">${escapeHTML(e.text)}</span>
       </div>
@@ -1005,6 +1054,127 @@
     } else {
       filterLabelEl.textContent = '總覽(全部專案)';
     }
+  }
+  const EVENT_TYPE_LABEL = { 'item-start':'開始', 'item-due':'截止', 'meeting':'會議', 'todo':'待辦', 'payment':'付款', 'reminder':'提醒', 'stock-in':'進貨', 'stock-ship':'出貨' };
+  // 每個「有開始+完成日期」的細項 = 一條橫條
+  const BAR_COLORS = ['#B4C6D1','#BFD3C1','#EBCDB4','#D2C5DC','#E3D49B','#B7D5D0'];
+  function getMonthTaskBars(year, month){
+    const N = new Date(year, month + 1, 0).getDate();
+    const mp = `${year}-${String(month+1).padStart(2,'0')}`;
+    const mStart = mp + '-01', mEnd = mp + '-' + String(N).padStart(2,'0');
+    const todayStr = new Date().toISOString().slice(0,10);
+    const bars = [];
+    projects.forEach((p, pi) => {
+      if(p.type === 'paid') return;
+      if(homeFilterProjectId && p.id !== homeFilterProjectId) return;
+      (p.items||[]).forEach(item => {
+        if(!item.start || !item.due) return;
+        const start = item.start <= item.due ? item.start : item.due, due = item.start <= item.due ? item.due : item.start;
+        if(due < mStart || start > mEnd) return;
+        const prog = getItemProgress(item);
+        const pct = prog ? prog.pct : 0;
+        const done = pct >= 100;
+        bars.push({
+          p, item, start, due, pct, done,
+          overdue: !done && due < todayStr,
+          color: BAR_COLORS[pi % BAR_COLORS.length],
+          startDay: start < mStart ? 1 : parseInt(start.slice(8,10),10),
+          endDay: due > mEnd ? N : parseInt(due.slice(8,10),10),
+          beforeMonth: start < mStart, afterMonth: due > mEnd
+        });
+      });
+    });
+    bars.sort((a,b) => a.start.localeCompare(b.start) || b.due.localeCompare(a.due));
+    return bars;
+  }
+  // 依週排版:回傳每週的日期、橫條片段(含所在列 lane)
+  function layoutMonthWeeks(year, month){
+    const N = new Date(year, month + 1, 0).getDate();
+    const startWeekday = (new Date(year, month, 1).getDay() + 6) % 7;
+    const mp = `${year}-${String(month+1).padStart(2,'0')}`;
+    const bars = getMonthTaskBars(year, month);
+    const weekCount = Math.ceil((startWeekday + N) / 7);
+    const weeks = [];
+    for(let w = 0; w < weekCount; w++){
+      const firstDay = w * 7 - startWeekday + 1;
+      const days = [];
+      for(let c = 0; c < 7; c++){
+        const d = firstDay + c;
+        days.push(d >= 1 && d <= N ? { day: d, dateStr: mp + '-' + String(d).padStart(2,'0') } : null);
+      }
+      const segs = [];
+      bars.forEach(b => {
+        const ss = Math.max(b.startDay, firstDay), se = Math.min(b.endDay, firstDay + 6);
+        if(ss > se) return;
+        segs.push({ bar: b, colStart: ss - firstDay + 1, colEnd: se - firstDay + 1,
+          contL: ss > b.startDay || b.beforeMonth, contR: se < b.endDay || b.afterMonth, lane: 0 });
+      });
+      segs.sort((x,y) => x.colStart - y.colStart || (y.colEnd - y.colStart) - (x.colEnd - x.colStart));
+      const laneEnds = [];
+      segs.forEach(sg => {
+        let l = 0;
+        while(laneEnds[l] !== undefined && laneEnds[l] >= sg.colStart) l++;
+        laneEnds[l] = sg.colEnd; sg.lane = l;
+      });
+      weeks.push({ days, segs, laneCount: laneEnds.length, firstDay });
+    }
+    return weeks;
+  }
+  function buildCalendarReportHTML(year, month){
+    const events = buildAllEvents();
+    const filtered = homeFilterProjectId ? events.filter(e => e.projectId === homeFilterProjectId) : events;
+    const N = new Date(year, month + 1, 0).getDate();
+    const mp = `${year}-${String(month+1).padStart(2,'0')}`;
+    const todayStr = new Date().toISOString().slice(0,10);
+    const mEvents = filtered.filter(e => e.date && e.date.startsWith(mp)).sort((a,b) => a.date.localeCompare(b.date));
+    const colorOf = { 'item-start':'#4F6F80', 'item-due':'#4F6F80', 'meeting':'#6B8F71', 'todo':'#B07A55', 'payment':'#C9A355', 'reminder':'#B5543F', 'stock-in':'#8E6FA8', 'stock-ship':'#4F9A94' };
+    const scopeP = homeFilterProjectId ? projects.find(x => x.id === homeFilterProjectId) : null;
+    // 1+2. 月曆(含橫條)
+    const weeks = layoutMonthWeeks(year, month);
+    const byDate = {};
+    mEvents.filter(e => !e.inBar).forEach(e => { (byDate[e.date] = byDate[e.date] || []).push(e); });
+    const bdr = 'border:1px solid #ddd;';
+    let calRows = '';
+    weeks.forEach(w => {
+      calRows += '<tr>' + w.days.map(d => `<td style="${bdr}padding:2px 4px;font-size:9px;font-weight:600;color:#555;${d && d.dateStr === todayStr ? 'background:#FBF3E6;' : (d ? '' : 'background:#fafafa;')}">${d ? d.day : ''}</td>`).join('') + '</tr>';
+      for(let l = 0; l < w.laneCount; l++){
+        let row = '', c = 1;
+        const lane = w.segs.filter(sg => sg.lane === l).sort((x,y) => x.colStart - y.colStart);
+        lane.forEach(sg => {
+          while(c < sg.colStart){ row += `<td style="border-left:1px solid #ddd;border-right:1px solid #ddd;"></td>`; c++; }
+          const b = sg.bar, col = b.overdue ? '#E9CFC8' : b.color;
+          row += `<td colspan="${sg.colEnd - sg.colStart + 1}" bgcolor="${col}" style="background:${col};border:1px solid #fff;font-size:7.5px;padding:1px 4px;white-space:nowrap;overflow:hidden;${b.done ? 'text-decoration:line-through;color:#777;' : ''}">${sg.contL ? '◀ ' : ''}${escapeHTML(b.p.name + ' ' + b.item.name)}${sg.contR ? ' ▶' : ''}</td>`;
+          c = sg.colEnd + 1;
+        });
+        while(c <= 7){ row += `<td style="border-left:1px solid #ddd;border-right:1px solid #ddd;"></td>`; c++; }
+        calRows += `<tr>${row}</tr>`;
+      }
+      calRows += '<tr>' + w.days.map(d => {
+        const evs = d ? (byDate[d.dateStr] || []) : [];
+        const shown = evs.slice(0,3).map(e => `<div style="font-size:7px;line-height:1.25;color:${colorOf[e.type]||'#555'};overflow:hidden;white-space:nowrap;">● ${escapeHTML((e.projectName ? e.projectName + ' ' : '') + e.text)}</div>`).join('');
+        const more = evs.length > 3 ? `<div style="font-size:7px;color:#888;">…另 ${evs.length - 3} 項</div>` : '';
+        return `<td valign="top" style="${bdr}height:34px;padding:2px 4px;${d ? '' : 'background:#fafafa;'}">${shown}${more}</td>`;
+      }).join('') + '</tr>';
+    });
+    const calHTML = `<table style="width:100%;border-collapse:collapse;table-layout:fixed;">
+      <tr>${['一','二','三','四','五','六','日'].map(w => `<td style="text-align:center;font-size:10px;color:#666;background:#f3f3f3;border:1px solid #ddd;">${w}</td>`).join('')}</tr>${calRows}</table>
+      <p style="font-size:9px;color:#888;margin:6px 0 0;">橫條=任務(開始日~完成日),粉紅=已逾期,刪除線=已完成,◀ ▶=跨週/跨月延續;下方文字為單日事項(提醒、待辦、付款、進出貨等)。</p>`;
+    // 3. 事項一覽
+    const listHTML = mEvents.length ? `<table style="width:100%;border-collapse:collapse;">
+      <tr style="background:#f3f3f3;"><td width="60" style="font-size:10px;">日期</td><td width="50" style="font-size:10px;">類型</td><td width="25%" style="font-size:10px;">專案</td><td style="font-size:10px;">事項</td></tr>
+      ${mEvents.map(e => `<tr><td style="font-size:10px;">${e.date.slice(5)}</td><td style="font-size:10px;color:${colorOf[e.type]||'#555'};">${EVENT_TYPE_LABEL[e.type]||''}</td><td style="font-size:10px;">${escapeHTML(e.projectName||'')}</td><td style="font-size:10px;">${escapeHTML(e.text)}</td></tr>`).join('')}
+    </table>` : '<p style="font-size:11px;color:#999;">這個月沒有排定的事項。</p>';
+    return `<div style="font-family:'Noto Serif TC', serif, sans-serif;color:#333;padding:8px;">
+      <div style="font-family:Georgia,'Noto Serif TC',serif;font-size:18px;letter-spacing:6px;color:#6E8894;margin-bottom:10px;">CHUANHO</div>
+      <h1 style="font-size:22px;margin:0 0 4px;">${year}年${month+1}月 行事曆</h1>
+      <p style="font-size:12px;color:#888;margin:0 0 16px;">${scopeP ? '專案:' + escapeHTML(scopeP.name) : '全部專案'} · 產生於 ${new Date().toLocaleString('zh-TW')}</p>
+      ${calHTML}
+      <h2 style="font-size:15px;margin:18px 0 8px;page-break-before:always;">本月事項一覽</h2>${listHTML}
+    </div>`;
+  }
+  function exportCalendarPDF(){
+    const year = homeCalMonth.getFullYear(), month = homeCalMonth.getMonth();
+    openPrintWindow(`${year}年${month+1}月行事曆`, buildCalendarReportHTML(year, month));
   }
   function homeCalPrevMonth(){ homeCalMonth = new Date(homeCalMonth.getFullYear(), homeCalMonth.getMonth() - 1, 1); renderHomeCalendar(); }
   function homeCalNextMonth(){ homeCalMonth = new Date(homeCalMonth.getFullYear(), homeCalMonth.getMonth() + 1, 1); renderHomeCalendar(); }
