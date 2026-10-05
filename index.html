@@ -186,6 +186,11 @@
   .cal-dot-sage{ background: var(--sage); }
   .cal-dot-clay{ background: var(--clay); }
   .cal-dot-gold{ background: #C9A355; }
+  .cal-dot-red{ background: #B5543F; }
+  .reminder-row{ display: flex; align-items: center; gap: 10px; padding: 6px 0; border-bottom: 1px dashed var(--line); font-size: 12.5px; }
+  .reminder-row .r-date{ font-family: 'JetBrains Mono', monospace; color: var(--dust); font-weight: 600; min-width: 84px; }
+  .reminder-row.done .r-text{ text-decoration: line-through; color: var(--ink-faint); }
+  .reminder-row .r-text{ flex: 1; }
   .calendar-legend{ display: flex; gap: 16px; flex-wrap: wrap; font-size: 11px; color: var(--ink-soft); margin-top: 12px; }
   .calendar-legend span{ display: flex; align-items: center; gap: 5px; }
   .cal-list-row{ display: flex; align-items: baseline; gap: 10px; padding: 6px 2px; border-bottom: 1px solid var(--line); font-size: 12.5px; flex-wrap: wrap; }
@@ -425,9 +430,9 @@
 
         <div class="sub-view-title-row">
           <div class="sub-view-title" style="margin:0;">📊 全專案甘特圖</div>
-          <button class="ghost-btn" onclick="toggleHomeGantt()" id="home-gantt-toggle-btn">展開</button>
+          <button class="ghost-btn" onclick="toggleHomeGantt()" id="home-gantt-toggle-btn">收合</button>
         </div>
-        <div id="home-gantt-section" style="display:none;"></div>
+        <div id="home-gantt-section"></div>
 
         <div class="sub-view-title" id="home-calendar-section">行事曆</div>
         <div class="calendar-card">
@@ -447,6 +452,7 @@
             <span><span class="cal-dot cal-dot-blue"></span>細項起訖</span>
             <span><span class="cal-dot cal-dot-sage"></span>會議</span>
             <span><span class="cal-dot cal-dot-clay"></span>待辦期限</span>
+            <span><span class="cal-dot cal-dot-red"></span>提醒</span>
             <span><span class="cal-dot cal-dot-gold"></span>付款到期</span>
             <span><span class="cal-dot cal-dot-stock"></span>進貨</span>
             <span><span class="cal-dot cal-dot-ship"></span>工廠出貨</span>
@@ -631,6 +637,18 @@
     </div>
   </div>
 
+  <div class="modal-overlay" id="modal-new-reminder">
+    <div class="modal">
+      <h3>新增提醒</h3>
+      <div class="form-row"><label>提醒日期</label><input id="rm-date" type="date"></div>
+      <div class="form-row"><label>要提醒我什麼事</label><input id="rm-text" type="text" placeholder="例如:確認瓶器打樣結果"></div>
+      <div class="modal-actions">
+        <button class="ghost-btn" onclick="closeModal('modal-new-reminder')">取消</button>
+        <button class="primary-btn" onclick="createReminder()">新增</button>
+      </div>
+    </div>
+  </div>
+
   <div class="modal-overlay" id="modal-new-decision">
     <div class="modal">
       <h3>新增待確認/決定事項</h3>
@@ -809,6 +827,7 @@
 
     unsubscribers.push(db.collection('standaloneTodos').onSnapshot(snap => {
       standaloneTodos = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+      if(currentTab === 'home') renderHome();
       if(currentTab === 'todos') renderTodoOverview();
     }, err => console.error('standaloneTodos listener', err)));
 
@@ -848,6 +867,9 @@
       (p.items||[]).forEach(item => {
         if(item.start) events.push({ date: item.start, projectId: p.id, projectName: p.name, type: 'item-start', text: item.name + ' 開始' });
         if(item.due) events.push({ date: item.due, projectId: p.id, projectName: p.name, type: 'item-due', text: item.name + ' 截止' });
+        (item.reminders||[]).forEach(r => {
+          if(!r.done && r.date) events.push({ date: r.date, projectId: p.id, projectName: p.name, type: 'reminder', text: '提醒:' + r.text + '(' + item.name + ')' });
+        });
         (item.meetings||[]).forEach(m => {
           if(m.date) events.push({ date: m.date, projectId: p.id, projectName: p.name, type: 'meeting', text: '會議:' + (m.content ? m.content.slice(0,24) : item.name) });
           (m.todos||[]).forEach(t => {
@@ -863,6 +885,9 @@
       const projId = trackingProj ? trackingProj.id : (linkedProj ? linkedProj.id : null);
       const projName = trackingProj ? trackingProj.name : (linkedProj ? linkedProj.name : (pay.item || '未分類付款'));
       events.push({ date: pay.dueDate, projectId: projId, projectName: projName, type: 'payment', text: '付款到期:' + pay.item });
+    });
+    standaloneTodos.forEach(t => {
+      if(!t.done && t.due) events.push({ date: t.due, projectId: null, projectName: '獨立待辦', type: 'todo', text: t.text + (t.owner ? '(' + t.owner + ')' : '') });
     });
     buildStockGroups().forEach(g => {
       const label = (g.vendor ? g.vendor + ' ' : '') + (g.name || '');
@@ -933,7 +958,7 @@
     const todayStr = new Date().toISOString().slice(0,10);
     const dayTypes = {};
     filtered.forEach(e => { (dayTypes[e.date] = dayTypes[e.date] || new Set()).add(e.type); });
-    const typeColor = { 'item-start':'cal-dot-blue', 'item-due':'cal-dot-blue', 'meeting':'cal-dot-sage', 'todo':'cal-dot-clay', 'payment':'cal-dot-gold', 'stock-in':'cal-dot-stock', 'stock-ship':'cal-dot-ship' };
+    const typeColor = { 'item-start':'cal-dot-blue', 'item-due':'cal-dot-blue', 'meeting':'cal-dot-sage', 'todo':'cal-dot-clay', 'payment':'cal-dot-gold', 'reminder':'cal-dot-red', 'stock-in':'cal-dot-stock', 'stock-ship':'cal-dot-ship' };
     let cells = '';
     for(let i=0;i<startWeekday;i++) cells += `<div class="cal-cell empty"></div>`;
     for(let d=1; d<=daysInMonth; d++){
@@ -1157,10 +1182,15 @@
   function buildOverviewData(p){
     const rows = [];
     (p.items||[]).forEach(item => {
+      if(item.start) rows.push({ date: item.start, text: item.name + ' 開始', owner: '', itemName: '' });
+      if(item.due) rows.push({ date: item.due, text: item.name + ' 截止', owner: '', itemName: '' });
       (item.meetings||[]).forEach(m => {
         (m.todos||[]).forEach(t => {
           if(!t.done && t.due) rows.push({ date: t.due, text: t.text, owner: t.owner, itemName: item.name });
         });
+      });
+      (item.reminders||[]).forEach(r => {
+        if(!r.done && r.date) rows.push({ date: r.date, text: '提醒:' + r.text, owner: '', itemName: item.name });
       });
     });
     rows.sort((a,b) => a.date.localeCompare(b.date));
@@ -1174,7 +1204,7 @@
     const { rows, decisions } = buildOverviewData(p);
     const multiItem = (p.items||[]).length > 1;
     const tableRows = rows.length ? rows.map(r => `
-      <tr><td class="od">${r.date}</td><td>${escapeHTML(r.text)}${r.owner ? '(' + escapeHTML(r.owner) + ')' : ''}${multiItem ? ' <span style="color:#999;">— ' + escapeHTML(r.itemName) + '</span>' : ''}</td></tr>
+      <tr><td class="od">${r.date}</td><td>${escapeHTML(r.text)}${r.owner ? '(' + escapeHTML(r.owner) + ')' : ''}${(multiItem && r.itemName) ? ' <span style="color:#999;">— ' + escapeHTML(r.itemName) + '</span>' : ''}</td></tr>
     `).join('') : `<tr><td colspan="2" style="color:#999;text-align:center;">目前沒有已排定日期的待辦事項</td></tr>`;
     const decisionsHTML = decisions.length ? decisions.map((d, idx) => `
       <div class="overview-decision-item">
@@ -1185,7 +1215,7 @@
       </div>
     `).join('') : '<div class="empty-note">目前沒有待確認/決定的事項。</div>';
     return `
-      <div class="overview-sub-title">近期時程一覽</div>
+      <div class="overview-sub-title">近期時程一覽(含任務起訖、待辦、提醒)</div>
       <table class="overview-table"><thead><tr><th style="width:110px;">日期</th><th>事項</th></tr></thead><tbody>${tableRows}</tbody></table>
       <div class="overview-sub-title">待我方確認/決定</div>
       ${decisionsHTML}
@@ -1344,6 +1374,20 @@
             ${pendingDecisions.length ? pendingDecisions.map(d => decisionEntryHTML(item.id, d)).join('') : '<div class="empty-note" style="padding:0 0 4px;">尚無待確認事項</div>'}
           </div>
 
+          <div class="reminder-section">
+            <div class="section-head-row">
+              <span class="section-lbl" style="margin:0;">提醒事項(會顯示在首頁行事曆)</span>
+              <button class="add-photo-btn" onclick="openNewReminderModal('${item.id}')">+ 新增提醒</button>
+            </div>
+            ${(item.reminders||[]).length ? [...item.reminders].sort((a,b) => (a.date||'').localeCompare(b.date||'')).map(r => `
+              <div class="reminder-row ${r.done ? 'done' : ''}">
+                <input type="checkbox" ${r.done ? 'checked' : ''} onchange="toggleReminder('${item.id}','${r.id}')">
+                <span class="r-date">${r.date || '—'}</span>
+                <span class="r-text">${escapeHTML(r.text)}</span>
+                <button class="stock-usage-del" onclick="deleteReminder('${item.id}','${r.id}')" title="刪除">✕</button>
+              </div>`).join('') : '<div class="empty-note" style="padding:0 0 4px;">尚無提醒事項</div>'}
+          </div>
+
           <div class="photo-section">
             <div class="section-head-row">
               <span class="section-lbl" style="margin:0;">${photoLabel}</span>
@@ -1453,6 +1497,43 @@
         ${bullets}
       </div>
     `;
+  }
+  function openNewReminderModal(itemId){
+    confirmTargetItemId = itemId;
+    document.getElementById('rm-date').value = '';
+    document.getElementById('rm-text').value = '';
+    document.getElementById('modal-new-reminder').classList.add('open');
+  }
+  function reopenItemAndSave(itemId, p){
+    openItems.add(itemId);
+    renderDetail();
+    const row = document.getElementById('row-' + itemId);
+    if(row) row.classList.add('open');
+    saveProject(p);
+  }
+  function createReminder(){
+    const p = getCurrentProject();
+    const item = p.items.find(i => i.id === confirmTargetItemId);
+    const date = document.getElementById('rm-date').value;
+    const text = document.getElementById('rm-text').value.trim();
+    if(!date || !text){ alert('請填寫提醒日期與內容'); return; }
+    if(!item.reminders) item.reminders = [];
+    item.reminders.push({ id: uid(), date, text, done: false });
+    closeModal('modal-new-reminder');
+    reopenItemAndSave(item.id, p);
+  }
+  function toggleReminder(itemId, rid){
+    const p = getCurrentProject();
+    const item = p.items.find(i => i.id === itemId);
+    const r = (item.reminders||[]).find(x => x.id === rid);
+    if(r) r.done = !r.done;
+    reopenItemAndSave(itemId, p);
+  }
+  function deleteReminder(itemId, rid){
+    const p = getCurrentProject();
+    const item = p.items.find(i => i.id === itemId);
+    item.reminders = (item.reminders||[]).filter(x => x.id !== rid);
+    reopenItemAndSave(itemId, p);
   }
   function openNewDecisionModal(itemId){
     confirmTargetItemId = itemId;
@@ -2742,7 +2823,7 @@
         </div>
       </div>`;
   }
-  let homeGanttOpen = false;
+  let homeGanttOpen = true;
   function toggleHomeGantt(){
     homeGanttOpen = !homeGanttOpen;
     document.getElementById('home-gantt-section').style.display = homeGanttOpen ? 'block' : 'none';
