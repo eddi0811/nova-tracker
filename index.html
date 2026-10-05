@@ -723,7 +723,7 @@
       <div class="form-row"><label>備註(選填)</label><input id="us-note" type="text"></div>
       <div class="modal-actions">
         <button class="ghost-btn" onclick="closeModal('modal-stock-use')">取消</button>
-        <button class="primary-btn" onclick="saveUsage()">登記</button>
+        <button class="primary-btn" id="use-save-btn" onclick="saveUsage()">登記</button>
       </div>
     </div>
   </div>
@@ -1993,7 +1993,7 @@
       const qty = parseQty(it.quantity);
       if(!(qty > 0)) return;
       const g = ensure(stockKeyOf(m.id, sup.vendor, it.partNo, it.itemName), { materialId: m.id, vendor: sup.vendor, name: it.itemName, partNo: it.partNo });
-      g.purchases.push({ src: 'material', qty, receiveDate: it.receiveDate || '', orderDate: it.orderDate || '', shipDate: it.shipDate || '' });
+      g.purchases.push({ src: 'material', materialId: m.id, qty, receiveDate: it.receiveDate || '', orderDate: it.orderDate || '', shipDate: it.shipDate || '' });
     })));
     inventory.forEach(d => { ensure(stockKeyOf(d.materialId, d.vendor, d.partNo, d.name), d).docs.push(d); });
     Object.values(map).forEach(g => {
@@ -2053,12 +2053,12 @@
     const srcLabel = pu => pu.src === 'material' ? '物料對應' : pu.src === 'legacy' ? '舊登記' : '手動登記';
     const purchaseRows = g.purchases.map(pu => `<tr>
       <td class="od">${pu.receiveDate || '—'}</td><td>${pu.qty.toLocaleString()}</td><td>${pu.orderDate || '—'}</td><td>${pu.shipDate || '—'}</td>
-      <td>${srcLabel(pu)}${(!forExport && pu.src === 'manual') ? ` <button class="stock-usage-del" onclick="openStockModal('${pu.docId}')">✎</button><button class="stock-usage-del" onclick="deleteStock('${pu.docId}')">✕</button>` : ''}</td></tr>`).join('');
+      <td>${srcLabel(pu)}${(!forExport && pu.src === 'manual') ? ` <button class="stock-usage-del" onclick="openStockModal('${pu.docId}')" title="編輯">✎</button><button class="stock-usage-del" onclick="deleteStock('${pu.docId}')" title="刪除">✕</button>` : ''}${(!forExport && pu.src === 'material') ? ` <button class="stock-usage-del" onclick="openMaterialModal('${pu.materialId}')" title="到物料對應編輯">✎</button>` : ''}</td></tr>`).join('');
     let cum = 0;
     const usageRows = g.usages.map(u => {
       cum += Number(u.qty)||0;
       const proj = u.projectId ? projects.find(p => p.id === u.projectId) : null;
-      return `<tr><td class="od">${u.date || '—'}</td><td>${(Number(u.qty)||0).toLocaleString()}</td><td>${proj ? escapeHTML(proj.name) : '—'}</td><td>${escapeHTML(u.note||'')}</td><td>${cum.toLocaleString()}</td>${forExport ? '' : `<td><button class="stock-usage-del" onclick="deleteUsage('${u.docId}','${u.id}')" title="刪除這筆(庫存會加回)">✕</button></td>`}</tr>`;
+      return `<tr><td class="od">${u.date || '—'}</td><td>${(Number(u.qty)||0).toLocaleString()}</td><td>${proj ? escapeHTML(proj.name) : '—'}</td><td>${escapeHTML(u.note||'')}</td><td>${cum.toLocaleString()}</td>${forExport ? '' : `<td style="white-space:nowrap;"><button class="stock-usage-del" onclick="openEditUsageModal('${u.docId}','${u.id}')" title="編輯這筆">✎</button><button class="stock-usage-del" onclick="deleteUsage('${u.docId}','${u.id}')" title="刪除這筆(庫存會加回)">✕</button></td>`}</tr>`;
     }).join('') || `<tr><td colspan="${forExport ? 5 : 6}" style="color:#999;text-align:center;">尚無使用紀錄</td></tr>`;
     return `
       <div class="stock-sum">
@@ -2186,9 +2186,25 @@
 
   // 登記使用
   let usingStockKey = null;
+  let editingUsage = null;
+  function openEditUsageModal(docId, usageId){
+    const d = inventory.find(x => x.id === docId); if(!d) return;
+    const u = (d.usageLog||[]).find(x => x.id === usageId); if(!u) return;
+    const g = stockGroups.find(x => x.docs.some(dd => dd.id === docId)); if(!g) return;
+    openUseModal(stockGroups.indexOf(g));
+    editingUsage = { docId, usageId };
+    document.getElementById('use-modal-title').textContent = '編輯使用紀錄:' + (g.name || '');
+    document.getElementById('use-save-btn').textContent = '儲存';
+    document.getElementById('us-qty').value = u.qty;
+    document.getElementById('us-date').value = u.date || '';
+    document.getElementById('us-project').value = u.projectId || '';
+    document.getElementById('us-note').value = u.note || '';
+  }
   function openUseModal(i){
     const g = stockGroups[i];
     if(!g) return;
+    editingUsage = null;
+    document.getElementById('use-save-btn').textContent = '登記';
     usingStockKey = g.key;
     document.getElementById('use-modal-title').textContent = '登記使用:' + (g.name || '');
     document.getElementById('use-modal-info').innerHTML = `${escapeHTML(g.vendor||'')}${g.partNo ? ' ・ 料號 ' + escapeHTML(g.partNo) : ''} ・ 目前剩餘 <b>${g.remain.toLocaleString()}</b> / 累計進貨 ${g.ordered.toLocaleString()}`;
@@ -2206,6 +2222,17 @@
     const date = document.getElementById('us-date').value;
     if(!(qty > 0)){ alert('請輸入用掉的數量'); return; }
     if(!date){ alert('請選擇使用日期'); return; }
+    if(editingUsage){
+      const d = inventory.find(x => x.id === editingUsage.docId); if(!d) return;
+      const old = (d.usageLog||[]).find(x => x.id === editingUsage.usageId);
+      const remainWithout = g.remain + (old ? Number(old.qty)||0 : 0);
+      if(qty > remainWithout && !confirm('用量(' + qty + ')超過可用庫存(' + remainWithout + '),仍要儲存嗎?剩餘會變成負數。')) return;
+      const usageLog = (d.usageLog||[]).map(x => x.id === editingUsage.usageId ? { ...x, date, qty, projectId: document.getElementById('us-project').value, note: document.getElementById('us-note').value.trim() } : x);
+      db.collection('inventory').doc(d.id).update({ usageLog })
+        .then(() => { closeModal('modal-stock-use'); editingUsage = null; usingStockKey = null; })
+        .catch(err => alert('儲存失敗:' + err.message));
+      return;
+    }
     if(qty > g.remain && !confirm('用量(' + qty + ')超過目前剩餘(' + g.remain + '),仍要登記嗎?剩餘會變成負數。')) return;
     const usage = { id: uid(), date, qty, projectId: document.getElementById('us-project').value, note: document.getElementById('us-note').value.trim() };
     const holder = g.docs[0];
