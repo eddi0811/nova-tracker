@@ -1248,6 +1248,7 @@
         <div style="font-family:Georgia,'Noto Serif TC',serif;font-size:18px;letter-spacing:6px;color:#6E8894;margin-bottom:10px;">CHUANHO</div>
         <h1 style="font-size:22px;margin:0 0 4px;">${escapeHTML(p.name)} 整理版</h1>
         <p style="font-size:12px;color:#888;margin:0 0 20px;">時程與待確認事項總覽 · 產生於 ${generatedAt}</p>
+        ${buildGanttExportHTML(p)}
         ${buildOverviewBodyHTML(p)}
       </div>`;
   }
@@ -2484,6 +2485,7 @@
       <style>
         @media print { @page { margin: 16mm; } }
         body{ font-family: -apple-system, "PingFang TC", "Microsoft JhengHei", sans-serif; color:#333; }
+        *{ -webkit-print-color-adjust:exact; print-color-adjust:exact; }
         img{ max-width:100%; }
         table{ border-collapse:collapse; width:100%; }
         td, th{ border:1px solid #ccc; padding:6px 8px; font-size:12px; }
@@ -2945,6 +2947,48 @@
       </div>`;
   }
 
+  // ---------- 甘特圖(匯出用:純表格,Word/PDF 都能正確顯示底色) ----------
+  function buildGanttExportHTML(p){
+    const items = (p.items || []).filter(i => i.start && i.due);
+    if(items.length === 0) return '';
+    const itemsById = {}; (p.items || []).forEach(i => { itemsById[i.id] = i; });
+    const range = computeGanttRange(items);
+    const DAY = 86400000;
+    const totalDays = Math.max(1, Math.round((range.max - range.min) / DAY));
+    const step = Math.max(1, Math.ceil(totalDays / 26));
+    const buckets = [];
+    for(let d = 0; d < totalDays; d += step){
+      buckets.push({ start: new Date(range.min.getTime() + d * DAY), end: new Date(range.min.getTime() + (d + step) * DAY) });
+    }
+    const today = new Date(new Date().toISOString().slice(0,10) + 'T00:00:00');
+    const fmt = d => (d.getMonth()+1) + '/' + d.getDate();
+    const NAMEW = 150;
+    const head = buckets.map(b => `<td style="font-size:7px;color:#666;text-align:center;border:1px solid #ddd;padding:2px 0;">${fmt(b.start)}</td>`).join('');
+    const rows = items.map(item => {
+      const st = new Date(item.start + 'T00:00:00'), du = new Date(item.due + 'T00:00:00');
+      const dep = getItemDepInfo(item, itemsById);
+      const prog = getItemProgress(item);
+      const base = dep && dep.conflict ? '#C98A6B' : (prog && prog.overdue ? '#D9A89B' : '#A9BEC9');
+      const done = dep && dep.conflict ? '#A8452E' : (prog && prog.overdue ? '#B5543F' : '#4F6F80');
+      const cells = buckets.map(b => {
+        const overlap = st < b.end && du >= b.start;
+        const isToday = today >= b.start && today < b.end;
+        const color = overlap ? (b.end <= today || (today >= b.start && today < b.end) ? done : base) : '';
+        const border = isToday ? 'border:1px solid #ddd;border-left:2px solid #C9A355;' : 'border:1px solid #ddd;';
+        return `<td ${color ? `bgcolor="${color}"` : ''} style="${border}${color ? `background:${color};` : ''}">&nbsp;</td>`;
+      }).join('');
+      const depTxt = dep ? `<br><span style="font-size:8px;color:${dep.conflict ? '#A8452E' : '#888'};">${dep.conflict ? '⚠ ' : ''}需等:${escapeHTML(dep.names.join('、'))}</span>` : '';
+      return `<tr><td width="${NAMEW}" style="font-size:10px;border:1px solid #ddd;padding:4px 6px;vertical-align:middle;"><strong>${escapeHTML(item.name)}</strong><br><span style="font-size:8px;color:#888;">${item.start} → ${item.due}${prog ? ' ・ ' + prog.pct + '%' : ''}</span>${depTxt}</td>${cells}</tr>`;
+    }).join('');
+    return `
+      <h2 style="font-size:16px;margin:6px 0 8px;">專案甘特圖</h2>
+      <table style="width:100%;border-collapse:collapse;table-layout:fixed;-webkit-print-color-adjust:exact;print-color-adjust:exact;">
+        <tr><td width="${NAMEW}" style="border:1px solid #ddd;font-size:9px;color:#666;padding:2px 6px;">細項 \\ 日期</td>${head}</tr>
+        ${rows}
+      </table>
+      <p style="font-size:9px;color:#888;margin:6px 0 20px;">深色=已過時間(進度),淺色=尚未到的時間,金色左線=今天;橘紅=與前置細項日期衝突,粉紅=已逾期。</p>`;
+  }
+
   // ---------- project report export ----------
   function buildReportHTML(){
     const p = getCurrentProject();
@@ -2971,7 +3015,7 @@
     }
     let itemsHTML = (p.items||[]).map(item => {
       const meetingsSorted = [...(item.meetings||[])].sort((a,b) => a.date.localeCompare(b.date));
-      const dateLine = p.type === 'task' ? `<p style="margin:2px 0;color:#555;font-size:12px;">起始:${item.start || '–'}　預計完成:${item.due || '–'}</p>` : '';
+      const dateLine = (item.start || item.due) ? `<p style="margin:2px 0;color:#555;font-size:12px;">起始:${item.start || '–'}　預計完成:${item.due || '–'}</p>` : '';
       const confirmedHTML = (item.confirmedEntries && item.confirmedEntries.length) ? `
         <div style="margin:8px 0 12px;padding:10px 14px;background:#EDF1E9;border-left:3px solid #A6AE9B;border-radius:4px;">
           ${item.confirmedEntries.map(e => `<p style="margin:4px 0;font-size:12.5px;"><strong>${e.type === 'task' ? '任務確認' : '廠商確認'}</strong>（${e.date}）：${e.type === 'task' ? escapeHTML(e.text) : '廠商 ' + (escapeHTML(e.vendorName) || '—') + '／品名 ' + (escapeHTML(e.productName) || '—')}</p>`).join('')}
@@ -2996,6 +3040,7 @@
         <div style="font-family:Georgia,'Noto Serif TC',serif;font-size:18px;letter-spacing:6px;color:#6E8894;margin-bottom:10px;">CHUANHO</div>
         <h1 style="font-size:22px;margin:0 0 4px;">${escapeHTML(p.name)}</h1>
         <p style="font-size:12px;color:#888;margin:0 0 24px;">彙整報告 · 產生於 ${generatedAt}</p>
+        ${buildGanttExportHTML(p)}
         ${itemsHTML}
       </div>`;
   }
