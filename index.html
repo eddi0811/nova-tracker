@@ -219,6 +219,11 @@
   .cal-bar.cont-l{ border-top-left-radius: 0; border-bottom-left-radius: 0; margin-left: -3px; }
   .cal-bar.cont-r{ border-top-right-radius: 0; border-bottom-right-radius: 0; margin-right: -3px; }
   .cal-bar.done{ opacity: .55; text-decoration: line-through; }
+  .cal-chips{ display: flex; flex-direction: column; gap: 2px; padding: 0 4px 0 6px; min-width: 0; }
+  .cal-chip{ display: flex; align-items: center; gap: 4px; font-size: 10px; line-height: 14px; color: var(--ink-soft); min-width: 0; }
+  .cal-chip .cal-dot{ flex: 0 0 6px; }
+  .cal-chip-text{ white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .cal-chip-more{ font-size: 9.5px; color: var(--ink-faint); }
   .cal-bar-more{ font-size: 10px; color: var(--ink-faint); padding-left: 6px; }
   .cal-list-row.is-today{ background: #FBF3E6; }
   .cal-list-tag{ font-size: 10.5px; color: var(--ink-faint); border: 1px solid var(--line); border-radius: 4px; padding: 0 5px; }
@@ -1009,6 +1014,8 @@
     const dayTypes = {};
     filtered.forEach(e => { if(e.inBar) return; (dayTypes[e.date] = dayTypes[e.date] || new Set()).add(e.type); });
     const typeColor = { 'item-start':'cal-dot-blue', 'item-due':'cal-dot-blue', 'meeting':'cal-dot-sage', 'todo':'cal-dot-clay', 'payment':'cal-dot-gold', 'reminder':'cal-dot-red', 'stock-in':'cal-dot-stock', 'stock-ship':'cal-dot-ship' };
+    const dayEvents = {};
+    filtered.forEach(e => { if(e.inBar) return; (dayEvents[e.date] = dayEvents[e.date] || []).push(e); });
     const weeks = layoutMonthWeeks(year, month);
     const MAXLANES = 5;
     let weeksHTML = '';
@@ -1027,8 +1034,11 @@
       const dotRow = usedLanes + 2 + (hidden > 0 ? 1 : 0);
       w.days.forEach((d, c) => {
         if(!d) return;
-        const types = dayTypes[d.dateStr] ? Array.from(dayTypes[d.dateStr]) : [];
-        body += `<div class="cal-dots" style="grid-row:${dotRow};grid-column:${c+1};">${types.map(t => `<span class="cal-dot ${typeColor[t]||''}"></span>`).join('')}</div>`;
+        const evs = dayEvents[d.dateStr] || [];
+        const MAXCHIPS = 3;
+        const chips = evs.slice(0, MAXCHIPS).map(e => `<div class="cal-chip" title="${escapeAttr((e.projectName ? e.projectName + ' · ' : '') + e.text)}"><span class="cal-dot ${typeColor[e.type]||''}"></span><span class="cal-chip-text">${escapeHTML(e.text)}</span></div>`).join('');
+        const more = evs.length > MAXCHIPS ? `<div class="cal-chip-more">…另 ${evs.length - MAXCHIPS} 項</div>` : '';
+        body += `<div class="cal-chips" style="grid-row:${dotRow};grid-column:${c+1};">${chips}${more}</div>`;
       });
       weeksHTML += `<div class="cal-week"><div class="cal-week-bg">${bg}</div><div class="cal-week-body">${body}</div></div>`;
     });
