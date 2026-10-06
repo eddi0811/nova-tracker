@@ -600,7 +600,10 @@
           <div class="view-title">庫存表</div>
           <button class="primary-btn" onclick="openStockModal()">+ 新增進貨</button>
         </div>
-        <div class="filters-row"><select id="stock-filter" onchange="renderInventory()"></select></div>
+        <div class="filters-row"><select id="stock-filter" onchange="renderInventory()"></select>
+          <button class="ghost-btn" onclick="exportStockSummaryWord()">匯出庫存總表 Word</button>
+          <button class="ghost-btn" onclick="exportStockSummaryPDF()">匯出庫存總表 PDF</button>
+        </div>
         <div class="stat-row four" id="stock-stats"></div>
         <div id="stock-list"></div>
       </div>
@@ -2304,6 +2307,61 @@
           </div>
         </div>`;
     }).join('');
+  }
+  function getStockFilterLabel(){
+    const sel = document.getElementById('stock-filter');
+    return sel && sel.selectedOptions[0] ? sel.selectedOptions[0].textContent : '全部產品/專案';
+  }
+  function getVisibleStockGroups(){
+    const flt = document.getElementById('stock-filter').value || 'all';
+    return buildStockGroups().filter(g => {
+      if(flt === 'all') return true;
+      if(flt === 'none') return !g.materialId;
+      if(flt.startsWith('m:')) return g.materialId === flt.slice(2);
+      if(flt.startsWith('p:')){ const m = materials.find(mm => mm.id === g.materialId); return !!m && m.projectId === flt.slice(2); }
+      return true;
+    });
+  }
+  function buildStockSummaryHTML(){
+    const gs = getVisibleStockGroups().map(g => {
+      const m = g.materialId ? materials.find(x => x.id === g.materialId) : null;
+      return { g, product: m ? (m.productName || '') : '未歸屬產品' };
+    }).sort((a,b) => a.product.localeCompare(b.product) || (a.g.name||'').localeCompare(b.g.name||''));
+    const tOrd = gs.reduce((a,x) => a + x.g.ordered, 0), tUsed = gs.reduce((a,x) => a + x.g.used, 0);
+    const th = (t, w, right) => `<td style="background:#f3f3f3;font-weight:600;border:1px solid #ccc;padding:6px 8px;font-size:12px;${right ? 'text-align:right;' : ''}${w ? 'width:' + w + ';' : ''}">${t}</td>`;
+    const rows = gs.map(({ g, product }) => {
+      const bad = g.remain <= 0;
+      return `<tr>
+        <td style="border:1px solid #ccc;padding:6px 8px;font-size:12px;">${escapeHTML(product)}</td>
+        <td style="border:1px solid #ccc;padding:6px 8px;font-size:12px;">${escapeHTML(g.vendor||'')}</td>
+        <td style="border:1px solid #ccc;padding:6px 8px;font-size:12px;">${escapeHTML(g.name||'')}</td>
+        <td style="border:1px solid #ccc;padding:6px 8px;font-size:12px;">${escapeHTML(g.partNo||'')}</td>
+        <td style="border:1px solid #ccc;padding:6px 8px;font-size:12px;text-align:right;">${g.ordered.toLocaleString()}</td>
+        <td style="border:1px solid #ccc;padding:6px 8px;font-size:12px;text-align:right;">${g.used.toLocaleString()}</td>
+        <td style="border:1px solid #ccc;padding:6px 8px;font-size:12px;text-align:right;font-weight:700;${bad ? 'color:#B5543F;' : ''}">${g.remain.toLocaleString()}</td></tr>`;
+    }).join('');
+    return `<div style="font-family: 'Noto Serif TC', serif, sans-serif; color:#333; padding:8px;">
+      <div style="font-family:Georgia,'Noto Serif TC',serif;font-size:18px;letter-spacing:6px;color:#6E8894;margin-bottom:10px;">CHUANHO</div>
+      <h1 style="font-size:22px;margin:0 0 4px;">庫存總表</h1>
+      <p style="font-size:12px;color:#888;margin:0 0 16px;">範圍:${escapeHTML(getStockFilterLabel())} · 共 ${gs.length} 項 · 產生於 ${new Date().toLocaleString('zh-TW')}</p>
+      ${gs.length ? `<table style="width:100%;border-collapse:collapse;">
+        <tr>${th('產品','')}${th('廠商','')}${th('品名','')}${th('料號','')}${th('累計進貨','',true)}${th('已使用','',true)}${th('目前庫存','',true)}</tr>
+        ${rows}
+        <tr><td colspan="4" style="border:1px solid #ccc;padding:6px 8px;font-size:12px;font-weight:700;background:#fafafa;">合計</td>
+          <td style="border:1px solid #ccc;padding:6px 8px;font-size:12px;text-align:right;font-weight:700;background:#fafafa;">${tOrd.toLocaleString()}</td>
+          <td style="border:1px solid #ccc;padding:6px 8px;font-size:12px;text-align:right;font-weight:700;background:#fafafa;">${tUsed.toLocaleString()}</td>
+          <td style="border:1px solid #ccc;padding:6px 8px;font-size:12px;text-align:right;font-weight:700;background:#fafafa;">${(tOrd - tUsed).toLocaleString()}</td></tr>
+      </table>
+      <p style="font-size:10px;color:#888;margin-top:8px;">目前庫存 = 累計進貨 − 已使用;庫存為 0 或負數以紅字標示。</p>` : '<p style="font-size:12px;color:#999;">目前沒有庫存品項。</p>'}
+    </div>`;
+  }
+  function exportStockSummaryPDF(){ openPrintWindow('庫存總表', buildStockSummaryHTML()); }
+  function exportStockSummaryWord(){
+    const header = "<html xmlns:o='urn:schemas-microsoft-com:office:office' xmlns:w='urn:schemas-microsoft-com:office:word' xmlns='http://www.w3.org/TR/REC-html40'><head><meta charset='utf-8'><title>庫存總表</title></head><body>";
+    const blob = new Blob(['\ufeff', header + buildStockSummaryHTML() + '</body></html>'], { type: 'application/msword' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a'); a.href = url; a.download = '庫存總表-' + new Date().toISOString().slice(0,10) + '.doc'; a.click();
+    URL.revokeObjectURL(url);
   }
   function buildStockReportHTML(g){
     const generatedAt = new Date().toLocaleString('zh-TW');
