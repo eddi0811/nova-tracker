@@ -817,20 +817,53 @@
   const provider = new firebase.auth.GoogleAuthProvider();
   provider.addScope('https://www.googleapis.com/auth/drive.file');
 
-  let driveAccessToken = null;
+  // Drive 上傳用的存取權杖:約 1 小時過期。存在 sessionStorage,重新整理頁面不用重登;過期則自動跳出 Google 視窗續期(不需登出)
+  const DRIVE_TOKEN_KEY = 'driveTokenV1';
+  let driveAccessToken = null, driveTokenExp = 0, driveTokenPromise = null;
+  try {
+    const o = JSON.parse(sessionStorage.getItem(DRIVE_TOKEN_KEY) || 'null');
+    if(o && o.token && o.exp > Date.now()){ driveAccessToken = o.token; driveTokenExp = o.exp; }
+  } catch(e) {}
+  function storeDriveToken(t){
+    driveAccessToken = t; driveTokenExp = Date.now() + 50 * 60 * 1000;
+    try { sessionStorage.setItem(DRIVE_TOKEN_KEY, JSON.stringify({ token: t, exp: driveTokenExp })); } catch(e) {}
+  }
+  function clearDriveToken(){
+    driveAccessToken = null; driveTokenExp = 0;
+    try { sessionStorage.removeItem(DRIVE_TOKEN_KEY); } catch(e) {}
+  }
+  function ensureDriveToken(force){
+    if(!force && driveAccessToken && Date.now() < driveTokenExp) return Promise.resolve(driveAccessToken);
+    if(driveTokenPromise) return driveTokenPromise;
+    const u = auth.currentUser;
+    driveTokenPromise = (u ? u.reauthenticateWithPopup(provider) : auth.signInWithPopup(provider))
+      .then(r => {
+        const t = r.credential && r.credential.accessToken;
+        if(!t) throw new Error('無法取得 Google Drive 權限');
+        storeDriveToken(t);
+        return t;
+      })
+      .catch(err => {
+        if(err && (err.code === 'auth/popup-blocked' || err.code === 'auth/cancelled-popup-request')) throw new Error('請允許瀏覽器彈出視窗後,再上傳一次圖片');
+        if(err && err.code === 'auth/popup-closed-by-user') throw new Error('Google 驗證視窗被關閉,請再上傳一次並完成驗證');
+        throw err;
+      })
+      .finally(() => { driveTokenPromise = null; });
+    return driveTokenPromise;
+  }
 
   function googleSignIn(){
     document.getElementById('login-error').textContent = '';
     document.getElementById('login-loading').style.display = 'block';
     auth.signInWithPopup(provider).then(result => {
-      driveAccessToken = result.credential ? result.credential.accessToken : null;
+      if(result.credential && result.credential.accessToken) storeDriveToken(result.credential.accessToken);
       document.getElementById('login-loading').style.display = 'none';
     }).catch(err => {
       document.getElementById('login-loading').style.display = 'none';
       document.getElementById('login-error').textContent = '登入失敗:此帳號可能不在授權名單中,或發生錯誤。(' + err.code + ')';
     });
   }
-  function logout(){ auth.signOut(); driveAccessToken = null; }
+  function logout(){ auth.signOut(); clearDriveToken(); }
 
   auth.onAuthStateChanged(user => {
     if(user){
@@ -2122,17 +2155,23 @@
 
   // ---------- Google Drive upload ----------
   async function uploadToDrive(file){
-    if(!driveAccessToken){ throw new Error('缺少 Drive 上傳權限,請登出後重新登入一次'); }
+    await ensureDriveToken(false);
     const metadata = { name: file.name, mimeType: file.type };
     const form = new FormData();
     form.append('metadata', new Blob([JSON.stringify(metadata)], { type: 'application/json' }));
     form.append('file', file);
-    const res = await fetch('https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart&fields=id', {
+    const doUpload = () => fetch('https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart&fields=id', {
       method: 'POST',
       headers: { Authorization: 'Bearer ' + driveAccessToken },
       body: form
     });
-    if(res.status === 401){ throw new Error('上傳權限已過期,請登出後重新登入一次'); }
+    let res = await doUpload();
+    if(res.status === 401){
+      clearDriveToken();
+      await ensureDriveToken(true);   // 權杖過期:跳出 Google 視窗續期,不用登出
+      res = await doUpload();
+      if(res.status === 401) throw new Error('Google Drive 權限驗證失敗,請登出後重新登入一次');
+    }
     const data = await res.json();
     if(!data.id) throw new Error('上傳失敗');
     await fetch(`https://www.googleapis.com/drive/v3/files/${data.id}/permissions`, {
