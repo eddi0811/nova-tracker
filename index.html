@@ -540,6 +540,7 @@
           <div class="detail-actions">
             <button class="ghost-btn" id="gantt-toggle-btn" onclick="setDetailView('gantt')">📊 甘特圖</button>
             <button class="ghost-btn" id="overview-toggle-btn" onclick="setDetailView('overview')">📋 時程總覽</button>
+            <button class="ghost-btn" id="history-toggle-btn" onclick="setDetailView('history')">🕘 歷程總覽</button>
             <button class="ghost-btn" id="overview-word-btn" onclick="exportOverviewWord()">匯出整理版 Word</button>
             <button class="ghost-btn" id="overview-pdf-btn" onclick="exportOverviewPDF()">匯出整理版 PDF</button>
             <button class="ghost-btn" onclick="exportWord()">匯出完整 Word</button>
@@ -550,6 +551,7 @@
         </div>
         <div id="overview-section" style="display:none;"></div>
         <div id="gantt-section" style="display:none;"></div>
+        <div id="history-section" style="display:none;"></div>
         <div id="item-list"></div>
 
         <div id="progress-section" style="display:none;">
@@ -701,6 +703,21 @@
       <div class="modal-actions">
         <button class="ghost-btn" onclick="closeModal('modal-new-reminder')">取消</button>
         <button class="primary-btn" onclick="createReminder()">新增</button>
+      </div>
+    </div>
+  </div>
+
+  <div class="modal-overlay" id="modal-decision">
+    <div class="modal">
+      <h3 id="dc-title">新增決策紀錄</h3>
+      <div class="form-row"><label>決定日期</label><input id="dc-date" type="date"></div>
+      <div class="form-row"><label>決定了什麼</label><textarea id="dc-text" rows="3" placeholder="例如:改用 PP 材質瓶身,不用 PET"></textarea></div>
+      <div class="form-row"><label>原因(選填)</label><input id="dc-reason" type="text" placeholder="例如:客戶要求耐熱、成本較低"></div>
+      <div class="form-row"><label>決定人(選填)</label><input id="dc-by" type="text" placeholder="例如:Eddi / 客戶"></div>
+      <div class="form-row"><label>相關細項(選填)</label><select id="dc-item"></select></div>
+      <div class="modal-actions">
+        <button class="ghost-btn" onclick="closeModal('modal-decision')">取消</button>
+        <button class="primary-btn" onclick="saveDecision()">儲存</button>
       </div>
     </div>
   </div>
@@ -1299,11 +1316,12 @@
   function saveProject(p){
     db.collection('projects').doc(p.id).set({
       name: p.name, type: p.type, createdAt: p.createdAt, items: p.items,
+      decisions: p.decisions || [],
       completed: !!p.completed, completedDate: p.completedDate || ''
     }).catch(err => alert('儲存失敗:' + err.message));
   }
 
-  let detailView = 'list'; // 'list' | 'overview' | 'gantt'
+  let detailView = 'list'; // 'list' | 'overview' | 'gantt' | 'history'
   function setDetailView(view){
     detailView = (detailView === view) ? 'list' : view;
     renderDetail();
@@ -1323,6 +1341,9 @@
     const ganttToggleBtn = document.getElementById('gantt-toggle-btn');
     const overviewWordBtn = document.getElementById('overview-word-btn');
     const overviewPdfBtn = document.getElementById('overview-pdf-btn');
+    const historyEl = document.getElementById('history-section');
+    const historyBtn = document.getElementById('history-toggle-btn');
+    historyEl.style.display = 'none';
     completeBtn.style.display = 'inline-block';
     completeBtn.textContent = p.completed ? '↺ 重新開啟' : '✓ 標記完成';
 
@@ -1336,6 +1357,7 @@
       ganttToggleBtn.style.display = 'none';
       overviewWordBtn.style.display = 'none';
       overviewPdfBtn.style.display = 'none';
+      historyBtn.style.display = 'none';
       renderProgressDetail(p);
       return;
     }
@@ -1347,7 +1369,18 @@
     overviewPdfBtn.style.display = 'inline-block';
     overviewToggleBtn.classList.toggle('ghost-btn-active', detailView === 'overview');
     ganttToggleBtn.classList.toggle('ghost-btn-active', detailView === 'gantt');
+    historyBtn.style.display = 'inline-block';
+    historyBtn.classList.toggle('ghost-btn-active', detailView === 'history');
 
+    if(detailView === 'history'){
+      itemListEl.style.display = 'none';
+      overviewSectionEl.style.display = 'none';
+      ganttSectionEl.style.display = 'none';
+      historyEl.style.display = 'block';
+      addItemBtn.style.display = 'none';
+      renderHistory(p);
+      return;
+    }
     if(detailView === 'overview'){
       itemListEl.style.display = 'none';
       ganttSectionEl.style.display = 'none';
@@ -1444,6 +1477,184 @@
     const blob = new Blob(['﻿', header + buildOverviewReportHTML(p) + '</body></html>'], { type: 'application/msword' });
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a'); a.href = url; a.download = p.name + '-整理版.doc'; a.click();
+    URL.revokeObjectURL(url);
+  }
+
+  // ---------- 歷程總覽(決策紀錄 + 時間軸 + 依細項分組) ----------
+  let editingDecisionId = null;
+  const HIST_KIND = {
+    decision:  { label:'決策',   bg:'#F0DCB8', fg:'#8A6A1F', order:0 },
+    confirmed: { label:'已確認', bg:'#D8E8DA', fg:'#3F6B4A', order:1 },
+    pending:   { label:'待確認', bg:'#F3DEDA', fg:'#8A3F2E', order:2 },
+    meeting:   { label:'會議',   bg:'#E4E8DC', fg:'#56694A', order:3 },
+    start:     { label:'開始',   bg:'#DCE6EC', fg:'#3F5F70', order:4 },
+    due:       { label:'截止',   bg:'#DCE6EC', fg:'#3F5F70', order:5 },
+    todo:      { label:'待辦',   bg:'#EDE2D6', fg:'#80583A', order:6 },
+    reminder:  { label:'提醒',   bg:'#F3DEDA', fg:'#8A3F2E', order:7 },
+    payment:   { label:'付款',   bg:'#F0DCB8', fg:'#8A6A1F', order:8 },
+    stock:     { label:'物料',   bg:'#E6DDEE', fg:'#6B4E86', order:9 },
+    project:   { label:'專案',   bg:'#E8E8E8', fg:'#555555', order:10 }
+  };
+  function histTag(kind){
+    const k = HIST_KIND[kind];
+    return `<span style="display:inline-block;font-size:10.5px;padding:1px 8px;border-radius:999px;background:${k.bg};color:${k.fg};white-space:nowrap;">${k.label}</span>`;
+  }
+  function buildHistoryEvents(p){
+    const ev = [];
+    const add = (date, kind, item, text, detailHTML) => ev.push({ date: date || '', kind, itemId: item ? item.id : '', itemName: item ? item.name : '', text, detailHTML: detailHTML || '' });
+    if(p.createdAt) add(p.createdAt, 'project', null, '專案建立');
+    if(p.completed && p.completedDate) add(p.completedDate, 'project', null, '專案結案');
+    const itemsById = {}; (p.items||[]).forEach(i => { itemsById[i.id] = i; });
+    (p.decisions||[]).forEach(d => {
+      const item = d.itemId ? itemsById[d.itemId] : null;
+      const meta = [d.reason ? '原因:' + escapeHTML(d.reason) : '', d.by ? '決定人:' + escapeHTML(d.by) : ''].filter(Boolean).join('　');
+      add(d.date, 'decision', item, d.text, meta ? `<div style="font-size:11.5px;color:#777;margin-top:3px;">${meta}</div>` : '');
+    });
+    (p.items||[]).forEach(item => {
+      if(item.start) add(item.start, 'start', item, item.name + ' 開始');
+      if(item.due) add(item.due, 'due', item, item.name + ' 預計完成');
+      (item.confirmedEntries||[]).forEach(e => {
+        add(e.date, 'confirmed', item, e.type === 'task' ? e.text : '廠商確認:' + (e.vendorName || '—') + ' / 品名:' + (e.productName || '—'));
+      });
+      (item.pendingDecisions||[]).forEach(d => {
+        const dt = d.createdAt ? new Date(d.createdAt).toISOString().slice(0,10) : '';
+        const bl = (d.bullets||[]).length ? '<ul style="margin:3px 0 0 16px;padding:0;font-size:11.5px;color:#777;">' + d.bullets.map(b => `<li>${escapeHTML(b)}</li>`).join('') + '</ul>' : '';
+        add(dt, 'pending', item, d.title + (d.note ? '(' + d.note + ')' : ''), bl);
+      });
+      (item.meetings||[]).forEach(m => {
+        const todos = (m.todos||[]);
+        const tl = todos.length ? '<ul style="margin:3px 0 0 16px;padding:0;font-size:11.5px;color:#777;">' + todos.map(t => `<li>${t.done ? '✓ ' : ''}${escapeHTML(t.text)}${t.owner ? '(' + escapeHTML(t.owner) + ')' : ''}${t.due ? ' ・期限 ' + t.due : ''}</li>`).join('') + '</ul>' : '';
+        const att = m.attendees ? `<div style="font-size:11.5px;color:#777;margin-top:3px;">與會人:${escapeHTML(m.attendees)}</div>` : '';
+        add(m.date, 'meeting', item, m.content || '(未填寫內容)', att + tl);
+        todos.forEach(t => { if(t.due) add(t.due, 'todo', item, t.text + (t.owner ? '(' + t.owner + ')' : '') + (t.done ? ' ✓已完成' : '') + ' — 待辦期限'); });
+      });
+      (item.reminders||[]).forEach(r => { if(r.date) add(r.date, 'reminder', item, r.text + (r.done ? ' ✓已處理' : '')); });
+    });
+    payments.filter(pay => pay.projectId === p.id).forEach(pay => {
+      (pay.payLog||[]).forEach(r => add(r.date, 'payment', null, '付款 NT$ ' + Number(r.amount||0).toLocaleString() + ':' + (pay.item || '') + (r.note ? '(' + r.note + ')' : '')));
+      if(pay.dueDate) add(pay.dueDate, 'payment', null, '付款到期:' + (pay.item || ''));
+    });
+    materials.filter(m => m.projectId === p.id).forEach(m => (m.suppliers||[]).forEach(sup => (sup.items||[]).forEach(it => {
+      const label = (sup.vendor ? sup.vendor + ' ' : '') + (it.itemName || '') + (it.quantity ? ' ×' + it.quantity : '');
+      if(it.orderDate) add(it.orderDate, 'stock', null, '訂貨:' + label);
+      if(it.receiveDate) add(it.receiveDate, 'stock', null, '進貨:' + label);
+      if(it.shipDate) add(it.shipDate, 'stock', null, '工廠出貨:' + label);
+    })));
+    ev.sort((a,b) => {
+      if(!a.date !== !b.date) return a.date ? -1 : 1;
+      return a.date.localeCompare(b.date) || HIST_KIND[a.kind].order - HIST_KIND[b.kind].order;
+    });
+    return ev;
+  }
+  function histTable(heads, rowsHTML, widths){
+    const th = (t, i) => `<td style="background:#f3f3f3;font-weight:600;border:1px solid #ccc;padding:6px 10px;font-size:12px;${widths && widths[i] ? 'width:' + widths[i] + ';' : ''}">${t}</td>`;
+    return `<table style="width:100%;border-collapse:collapse;margin-bottom:8px;"><tr>${heads.map(th).join('')}</tr>${rowsHTML}</table>`;
+  }
+  const HTD = 'border:1px solid #ccc;padding:6px 10px;font-size:12.5px;vertical-align:top;';
+  function buildHistoryBodyHTML(p, forExport){
+    const h = t => `<h3 style="font-size:15px;margin:22px 0 10px;">${t}</h3>`;
+    const events = buildHistoryEvents(p);
+    const multiItem = (p.items||[]).length > 1;
+    const decisions = [...(p.decisions||[])].sort((a,b) => (a.date||'').localeCompare(b.date||''));
+    const decRows = decisions.map(d => {
+      const item = d.itemId ? (p.items||[]).find(i => i.id === d.itemId) : null;
+      return `<tr>
+        <td style="${HTD}white-space:nowrap;font-family:monospace;">${d.date || '—'}</td>
+        <td style="${HTD}white-space:pre-wrap;"><strong>${escapeHTML(d.text)}</strong></td>
+        <td style="${HTD}">${escapeHTML(d.reason || '')}</td>
+        <td style="${HTD}">${escapeHTML(d.by || '')}</td>
+        <td style="${HTD}">${item ? escapeHTML(item.name) : '整個專案'}</td>
+        ${forExport ? '' : `<td style="${HTD}white-space:nowrap;"><button class="stock-usage-del" onclick="openDecisionModal('${d.id}')" title="編輯">✎</button><button class="stock-usage-del" onclick="deleteDecision('${d.id}')" title="刪除">✕</button></td>`}</tr>`;
+    }).join('');
+    const decHTML = decisions.length
+      ? histTable(['日期','決定內容','原因','決定人','相關細項'].concat(forExport ? [] : ['']), decRows, ['100px','','22%','12%','14%'])
+      : '<div class="empty-note">尚無決策紀錄。' + (forExport ? '' : '點上方「+ 新增決策」開始記錄。') + '</div>';
+    const tlRows = events.map(e => `<tr>
+      <td style="${HTD}white-space:nowrap;font-family:monospace;">${e.date || '—'}</td>
+      <td style="${HTD}">${histTag(e.kind)}</td>
+      <td style="${HTD}white-space:pre-wrap;">${e.kind === 'decision' ? '<strong>' + escapeHTML(e.text) + '</strong>' : escapeHTML(e.text)}${(multiItem && e.itemName) ? ' <span style="color:#999;">— ' + escapeHTML(e.itemName) + '</span>' : ''}${e.detailHTML}</td></tr>`).join('');
+    const tlHTML = events.length ? histTable(['日期','類型','內容'], tlRows, ['100px','70px','']) : '<div class="empty-note">目前沒有任何紀錄。</div>';
+    // 依細項分組
+    const groupHTML = [];
+    const mkGroup = (title, sub, list) => {
+      if(!list.length) return;
+      const rows = list.map(e => `<tr><td style="${HTD}white-space:nowrap;font-family:monospace;">${e.date || '—'}</td><td style="${HTD}">${histTag(e.kind)}</td><td style="${HTD}white-space:pre-wrap;">${e.kind === 'decision' ? '<strong>' + escapeHTML(e.text) + '</strong>' : escapeHTML(e.text)}${e.detailHTML}</td></tr>`).join('');
+      groupHTML.push(`<div style="margin:0 0 16px;page-break-inside:avoid;"><div style="font-size:13.5px;font-weight:600;margin:12px 0 6px;">${escapeHTML(title)}${sub ? ' <span style="font-weight:400;font-size:11.5px;color:#888;">' + sub + '</span>' : ''}</div>${histTable(['日期','類型','內容'], rows, ['100px','70px',''])}</div>`);
+    };
+    mkGroup('專案整體', '', events.filter(e => !e.itemId));
+    (p.items||[]).forEach(item => mkGroup(item.name, (item.start || item.due) ? (item.start || '–') + ' → ' + (item.due || '–') : '', events.filter(e => e.itemId === item.id)));
+    return `${h('決策紀錄')}${decHTML}${h('歷程時間軸(由早到晚)')}${tlHTML}${h('依' + (p.type === 'task' ? '任務' : '版本') + '分組')}${groupHTML.join('') || '<div class="empty-note">目前沒有任何紀錄。</div>'}`;
+  }
+  function renderHistory(p){
+    document.getElementById('history-section').innerHTML = `
+      <div class="section-head-row" style="margin-bottom:6px;">
+        <span class="section-lbl" style="margin:0;">整個專案從開始到現在,做了什麼、決定了什麼</span>
+        <span style="display:flex;gap:8px;flex-wrap:wrap;">
+          <button class="primary-btn" style="padding:7px 14px;font-size:12px;" onclick="openDecisionModal()">+ 新增決策</button>
+          <button class="ghost-btn" style="padding:7px 14px;font-size:12px;" onclick="exportHistoryWord()">匯出歷程 Word</button>
+          <button class="ghost-btn" style="padding:7px 14px;font-size:12px;" onclick="exportHistoryPDF()">匯出歷程 PDF</button>
+        </span>
+      </div>
+      ${buildHistoryBodyHTML(p, false)}`;
+  }
+  function openDecisionModal(id){
+    const p = getCurrentProject(); if(!p) return;
+    editingDecisionId = id || null;
+    const d = id ? (p.decisions||[]).find(x => x.id === id) : null;
+    document.getElementById('dc-title').textContent = d ? '編輯決策紀錄' : '新增決策紀錄';
+    document.getElementById('dc-date').value = d ? (d.date || '') : new Date().toISOString().slice(0,10);
+    document.getElementById('dc-text').value = d ? d.text : '';
+    document.getElementById('dc-reason').value = d ? (d.reason || '') : '';
+    document.getElementById('dc-by').value = d ? (d.by || '') : '';
+    document.getElementById('dc-item').innerHTML = '<option value="">整個專案</option>' + (p.items||[]).map(i => `<option value="${i.id}">${escapeHTML(i.name)}</option>`).join('');
+    document.getElementById('dc-item').value = d ? (d.itemId || '') : '';
+    document.getElementById('modal-decision').classList.add('open');
+  }
+  function saveDecision(){
+    const p = getCurrentProject(); if(!p) return;
+    const date = document.getElementById('dc-date').value;
+    const text = document.getElementById('dc-text').value.trim();
+    if(!date || !text){ alert('請填寫決定日期與內容'); return; }
+    const data = { date, text, reason: document.getElementById('dc-reason').value.trim(), by: document.getElementById('dc-by').value.trim(), itemId: document.getElementById('dc-item').value };
+    if(!p.decisions) p.decisions = [];
+    if(editingDecisionId){
+      const d = p.decisions.find(x => x.id === editingDecisionId);
+      if(d) Object.assign(d, data);
+    } else {
+      p.decisions.push({ id: uid(), ...data, createdAt: Date.now() });
+    }
+    editingDecisionId = null;
+    closeModal('modal-decision');
+    renderDetail();
+    saveProject(p);
+  }
+  function deleteDecision(id){
+    const p = getCurrentProject(); if(!p) return;
+    if(!confirm('確定要刪除這筆決策紀錄嗎?')) return;
+    p.decisions = (p.decisions||[]).filter(d => d.id !== id);
+    renderDetail();
+    saveProject(p);
+  }
+  function buildHistoryReportHTML(p){
+    const events = buildHistoryEvents(p).filter(e => e.date);
+    const first = events.length ? events[0].date : '', last = events.length ? events[events.length-1].date : '';
+    return `<div style="font-family: 'Noto Serif TC', serif, sans-serif; color:#333; padding:8px;">
+      <div style="font-family:Georgia,'Noto Serif TC',serif;font-size:18px;letter-spacing:6px;color:#6E8894;margin-bottom:10px;">CHUANHO</div>
+      <h1 style="font-size:22px;margin:0 0 4px;">${escapeHTML(p.name)} 歷程總覽</h1>
+      <p style="font-size:12px;color:#888;margin:0 0 4px;">${first ? '紀錄期間:' + first + ' ~ ' + last + ' · ' : ''}${p.completed ? '已結案' + (p.completedDate ? '(' + p.completedDate + ')' : '') : '進行中'} · 產生於 ${new Date().toLocaleString('zh-TW')}</p>
+      ${buildHistoryBodyHTML(p, true)}
+    </div>`;
+  }
+  function exportHistoryPDF(){
+    const p = getCurrentProject();
+    openPrintWindow(p.name + '-歷程總覽', buildHistoryReportHTML(p));
+  }
+  function exportHistoryWord(){
+    const p = getCurrentProject();
+    const header = "<html xmlns:o='urn:schemas-microsoft-com:office:office' xmlns:w='urn:schemas-microsoft-com:office:word' xmlns='http://www.w3.org/TR/REC-html40'><head><meta charset='utf-8'><title>歷程總覽</title></head><body>";
+    const blob = new Blob(['﻿', header + buildHistoryReportHTML(p) + '</body></html>'], { type: 'application/msword' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a'); a.href = url; a.download = p.name + '-歷程總覽.doc'; a.click();
     URL.revokeObjectURL(url);
   }
 
