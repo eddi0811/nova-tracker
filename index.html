@@ -624,6 +624,12 @@
             <option value="partial">部分付款</option>
             <option value="paid">已付款</option>
           </select>
+          <select id="pf-sort" onchange="renderPayments()">
+            <option value="created-desc">排序:新增時間(新→舊)</option>
+            <option value="created-asc">排序:新增時間(舊→新)</option>
+            <option value="due">排序:到期日(早→晚)</option>
+            <option value="amount">排序:金額(大→小)</option>
+          </select>
           <button class="ghost-btn" onclick="exportPaymentsWord()">匯出對帳清單 Word</button>
           <button class="ghost-btn" onclick="exportPaymentsPDF()">匯出對帳清單 PDF</button>
         </div>
@@ -746,6 +752,7 @@
       <div class="form-row"><label>付款對象</label><input id="np2-payee" type="text"></div>
       <div class="form-row"><label>到期日</label><input id="np2-due" type="date"></div>
       <div class="form-row"><label>關聯專案</label><select id="np2-project"></select></div>
+      <div class="form-row"><label>新增日期(選填,用於排序;舊項目可自行補上)</label><input id="np2-created" type="date"></div>
       <div class="form-row"><label>備註</label><textarea id="np2-note" rows="2"></textarea></div>
       <div class="modal-actions">
         <button class="ghost-btn" onclick="closeModal('modal-new-payment')">取消</button>
@@ -3123,6 +3130,22 @@
       if(statusFilter !== 'all' && getPayStatus(pay) !== statusFilter) return false;
       return true;
     });
+    const sortMode = (document.getElementById('pf-sort') || {}).value || 'created-desc';
+    const cKey = pay => Number(pay.createdAt) || 0;
+    if(sortMode === 'created-desc' || sortMode === 'created-asc'){
+      const dir = sortMode === 'created-desc' ? -1 : 1;
+      filtered = [...filtered].sort((a,b) => {
+        const ka = cKey(a), kb = cKey(b);
+        if(!ka && !kb) return 0;
+        if(!ka) return 1;           // 沒有新增時間的舊項目排最後
+        if(!kb) return -1;
+        return (ka - kb) * dir;
+      });
+    } else if(sortMode === 'due'){
+      filtered = [...filtered].sort((a,b) => (a.dueDate || '9999').localeCompare(b.dueDate || '9999'));
+    } else if(sortMode === 'amount'){
+      filtered = [...filtered].sort((a,b) => Number(b.amount||0) - Number(a.amount||0));
+    }
     const remainingByCur = sumByCur(payments, p => Math.max(Number(p.amount||0) - getPaidAmount(p), 0));
     const paidByCur = sumByCur(payments, p => getPaidAmount(p));
     const statLines = m => { const ks = Object.keys(CURRENCIES).filter(c => m[c] !== undefined); return (ks.length ? ks : ['TWD']).map(c => `<div>${fmtMoney(m[c]||0, c)}</div>`).join(''); };
@@ -3236,6 +3259,7 @@
     document.getElementById('np2-amount').value = pay ? pay.amount : '';
     document.getElementById('np2-payee').value = pay ? pay.payee : '';
     document.getElementById('np2-due').value = pay ? pay.dueDate : '';
+    document.getElementById('np2-created').value = (pay && pay.createdAt) ? new Date(Number(pay.createdAt)).toISOString().slice(0,10) : '';
     document.getElementById('np2-note').value = pay ? pay.note : '';
     populateProjectSelect('np2-project', false);
     if(pay) document.getElementById('np2-project').value = pay.projectId || '';
@@ -3253,6 +3277,15 @@
       projectId: document.getElementById('np2-project').value || '',
       note: document.getElementById('np2-note').value.trim()
     };
+    // 新增時間:有填日期就以該日期為準(若日期沒變就保留原本的精確時間);沒填且是新項目則用現在
+    const createdInput = document.getElementById('np2-created').value;
+    const existingPay = editingPaymentId ? payments.find(x => x.id === editingPaymentId) : null;
+    if(createdInput){
+      const oldTs = existingPay && existingPay.createdAt ? Number(existingPay.createdAt) : 0;
+      if(!(oldTs && new Date(oldTs).toISOString().slice(0,10) === createdInput)) data.createdAt = new Date(createdInput + 'T12:00:00').getTime();
+    } else if(!existingPay){
+      data.createdAt = Date.now();
+    }
     if(editingPaymentId){
       const pay = payments.find(x => x.id === editingPaymentId);
       // 若總金額被改動,重新依既有付款紀錄算出目前狀態
