@@ -741,6 +741,7 @@
     <div class="modal">
       <h3 id="payment-modal-title">新增待付款項目</h3>
       <div class="form-row"><label>項目名稱</label><input id="np2-name" type="text"></div>
+      <div class="form-row"><label>幣別</label><select id="np2-currency"><option value="TWD">台幣 NT$</option><option value="USD">美元 US$</option><option value="CNY">人民幣 ¥</option></select></div>
       <div class="form-row"><label>金額</label><input id="np2-amount" type="number"></div>
       <div class="form-row"><label>付款對象</label><input id="np2-payee" type="text"></div>
       <div class="form-row"><label>到期日</label><input id="np2-due" type="date"></div>
@@ -1566,7 +1567,7 @@
       (item.reminders||[]).forEach(r => { if(r.date) add(r.date, 'reminder', item, r.text + (r.done ? ' ✓已處理' : '')); });
     });
     payments.filter(pay => pay.projectId === p.id).forEach(pay => {
-      (pay.payLog||[]).forEach(r => add(r.date, 'payment', null, '付款 NT$ ' + Number(r.amount||0).toLocaleString() + ':' + (pay.item || '') + (r.note ? '(' + r.note + ')' : '')));
+      (pay.payLog||[]).forEach(r => add(r.date, 'payment', null, '付款 ' + fmtMoney(r.amount, curOf(pay)) + ':' + (pay.item || '') + (r.note ? '(' + r.note + ')' : '')));
       if(pay.dueDate) add(pay.dueDate, 'payment', null, '付款到期:' + (pay.item || ''));
     });
     materials.filter(m => m.projectId === p.id).forEach(m => (m.suppliers||[]).forEach(sup => (sup.items||[]).forEach(it => {
@@ -1698,7 +1699,7 @@
   function renderProgressDetail(p){
     const banner = document.getElementById('progress-banner');
     const meta = [];
-    if(p.amount) meta.push('金額:NT$ ' + Number(p.amount).toLocaleString());
+    if(p.amount) meta.push('金額:' + fmtMoney(p.amount, projCurrency(p)));
     if(p.payee) meta.push('付款對象:' + escapeHTML(p.payee));
     banner.innerHTML = `
       <div class="confirmed-card">
@@ -3068,16 +3069,17 @@
     const today = new Date().toISOString().slice(0,10);
     const projSel = document.getElementById('pf-project'), stSel = document.getElementById('pf-status');
     const scope = (projSel.selectedOptions[0] ? projSel.selectedOptions[0].textContent : '全部專案') + ' / ' + (stSel.selectedOptions[0] ? stSel.selectedOptions[0].textContent : '全部狀態');
-    const money = n => 'NT$ ' + Number(n||0).toLocaleString();
     const TD = 'border:1px solid #ccc;padding:5px 8px;font-size:11.5px;vertical-align:top;';
     const TH = 'background:#f3f3f3;font-weight:600;border:1px solid #ccc;padding:5px 8px;font-size:11.5px;';
     const withLedger = list.map(pay => ({ pay, led: getPayLedger(pay), status: getPayStatus(pay) }));
     const unpaid = withLedger.filter(x => x.status !== 'paid').sort((a,b) => (a.pay.dueDate || '9999').localeCompare(b.pay.dueDate || '9999'));
     const paid = withLedger.filter(x => x.status === 'paid').sort((a,b) => (a.pay.paidDate || '').localeCompare(b.pay.paidDate || ''));
-    const sumRemain = unpaid.reduce((s,x) => s + x.led.remaining, 0);
-    const sumPaidAll = withLedger.reduce((s,x) => s + (x.led.total - x.led.remaining), 0);
-    const sumPaidDone = paid.reduce((s,x) => s + x.led.total, 0);
+    const sumRemain = sumByCur(unpaid, x => x.led.remaining);
+    const sumPaidAll = sumByCur(withLedger, x => x.led.total - x.led.remaining);
+    const sumPaidDone = sumByCur(paid, x => x.led.total);
     const block = ({ pay, led, status }) => {
+      const cc = curOf(pay);
+      const money = n => fmtMoney(n, cc);
       const proj = projects.find(p => p.id === pay.projectId);
       const overdue = status !== 'paid' && pay.dueDate && pay.dueDate < today;
       const label = status === 'paid' ? '已付清' : status === 'partial' ? '部分付款' : '未付款';
@@ -3090,14 +3092,14 @@
         <tr><td colspan="3" style="${TD}font-weight:700;background:#fafafa;">目前餘額</td><td style="${TD}text-align:right;font-weight:700;background:#fafafa;${led.remaining > 0 ? 'color:#B5543F;' : 'color:#3F6B4A;'}">${money(led.remaining)}</td></tr></table></div>`;
     };
     const section = (title, arr, subLabel, subValue) => arr.length ? `<h2 style="font-size:16px;margin:22px 0 4px;border-bottom:2px solid #6E8894;padding-bottom:4px;">${title}(${arr.length} 筆)</h2>
-      <p style="font-size:12px;margin:4px 0 8px;color:#555;">${subLabel}:<strong>${money(subValue)}</strong></p>${arr.map(block).join('')}` : '';
+      <p style="font-size:12px;margin:4px 0 8px;color:#555;">${subLabel}:<strong>${fmtSums(subValue)}</strong></p>${arr.map(block).join('')}` : '';
     return `<div style="font-family:'Noto Serif TC', serif, sans-serif;color:#333;padding:8px;">
       <div style="font-family:Georgia,'Noto Serif TC',serif;font-size:18px;letter-spacing:6px;color:#6E8894;margin-bottom:10px;">CHUANHO</div>
       <h1 style="font-size:22px;margin:0 0 4px;">對帳清單</h1>
       <p style="font-size:12px;color:#888;margin:0 0 14px;">範圍:${escapeHTML(scope)} · 產生於 ${new Date().toLocaleString('zh-TW')}</p>
       <table style="border-collapse:collapse;width:100%;margin-bottom:6px;"><tr>
         <td style="${TH}">尚欠總額</td><td style="${TH}">已付款總額</td><td style="${TH}">未付清筆數</td><td style="${TH}">已付清筆數</td></tr><tr>
-        <td style="${TD}font-weight:700;color:#B5543F;">${money(sumRemain)}</td><td style="${TD}font-weight:700;color:#3F6B4A;">${money(sumPaidAll)}</td><td style="${TD}">${unpaid.length}</td><td style="${TD}">${paid.length}</td></tr></table>
+        <td style="${TD}font-weight:700;color:#B5543F;">${fmtSums(sumRemain, '<br>')}</td><td style="${TD}font-weight:700;color:#3F6B4A;">${fmtSums(sumPaidAll, '<br>')}</td><td style="${TD}">${unpaid.length}</td><td style="${TD}">${paid.length}</td></tr></table>
       ${section('未付清(含部分付款)', unpaid, '尚欠小計', sumRemain)}
       ${section('已付清', paid, '已付清小計', sumPaidDone)}
       ${list.length ? '' : '<p style="font-size:12px;color:#999;">沒有符合條件的項目。</p>'}
@@ -3121,13 +3123,14 @@
       if(statusFilter !== 'all' && getPayStatus(pay) !== statusFilter) return false;
       return true;
     });
-    const remainingSum = payments.reduce((s,p) => s + Math.max(Number(p.amount||0) - getPaidAmount(p), 0), 0);
+    const remainingByCur = sumByCur(payments, p => Math.max(Number(p.amount||0) - getPaidAmount(p), 0));
+    const paidByCur = sumByCur(payments, p => getPaidAmount(p));
+    const statLines = m => { const ks = Object.keys(CURRENCIES).filter(c => m[c] !== undefined); return (ks.length ? ks : ['TWD']).map(c => `<div>${fmtMoney(m[c]||0, c)}</div>`).join(''); };
     const remainingCount = payments.filter(p => Math.max(Number(p.amount||0) - getPaidAmount(p), 0) > 0).length;
-    const paidSum = payments.reduce((s,p) => s + getPaidAmount(p), 0);
     document.getElementById('payment-stats').innerHTML = `
-      <div class="stat-card"><div class="stat-label">尚欠總額</div><div class="stat-num dust">NT$ ${remainingSum.toLocaleString()}</div></div>
+      <div class="stat-card"><div class="stat-label">尚欠總額</div><div class="stat-num dust" style="font-size:${Object.keys(remainingByCur).length > 1 ? '15px' : 'inherit'};">${statLines(remainingByCur)}</div></div>
       <div class="stat-card"><div class="stat-label">尚未付清筆數</div><div class="stat-num">${remainingCount}</div></div>
-      <div class="stat-card"><div class="stat-label">已付款總額</div><div class="stat-num sage">NT$ ${paidSum.toLocaleString()}</div></div>
+      <div class="stat-card"><div class="stat-label">已付款總額</div><div class="stat-num sage" style="font-size:${Object.keys(paidByCur).length > 1 ? '15px' : 'inherit'};">${statLines(paidByCur)}</div></div>
     `;
     const today = new Date().toISOString().slice(0,10);
     const list = document.getElementById('payment-list');
@@ -3143,6 +3146,7 @@
       const attachments = pay.attachments || [];
       const payLog = pay.payLog || [];
       const statusLabel = status === 'paid' ? '已付款' : status === 'partial' ? '部分付款' : '未付款';
+      const cur = curOf(pay);
       return `
         <div class="payment-card">
           <div class="payment-row">
@@ -3154,12 +3158,12 @@
                 ${status === 'paid' ? ` ・ 已付清日期:${pay.paidDate}` : ''}
               </div>
               <div class="payment-progress">
-                已付 NT$ ${paidAmt.toLocaleString()} / 總額 NT$ ${total.toLocaleString()}
-                ${remaining > 0 ? ` ・ <span class="remaining">尚欠 NT$ ${remaining.toLocaleString()}</span>` : ' ・ 已付清'}
+                已付 ${fmtMoney(paidAmt, cur)} / 總額 ${fmtMoney(total, cur)}
+                ${remaining > 0 ? ` ・ <span class="remaining">尚欠 ${fmtMoney(remaining, cur)}</span>` : ' ・ 已付清'}
               </div>
               <div class="payment-progress-bar"><div class="payment-progress-bar-fill" style="width:${pct}%;"></div></div>
             </div>
-            <div class="payment-amount">NT$ ${total.toLocaleString()}</div>
+            <div class="payment-amount">${fmtMoney(total, cur)}</div>
             <span class="status-badge ${status}">${statusLabel}</span>
             ${status !== 'paid' ? `
               <div class="pay-action">
@@ -3172,7 +3176,7 @@
                   <input type="date" id="pay-date-${pay.id}" value="${today}">
                 </div>
                 <button class="primary-btn" onclick="savePaymentRecord('${pay.id}')">登記付款</button>
-                <div class="pay-action-hint">留空則預設登記全額 NT$ ${remaining.toLocaleString()};若只先付訂金,請在上方欄位輸入實際金額(例如 5000)</div>
+                <div class="pay-action-hint">留空則預設登記全額 ${fmtMoney(remaining, cur)};若只先付訂金,請在上方欄位輸入實際金額(例如 5000)</div>
               </div>` : ''}
             ${paidAmt > 0 ? (
               projects.some(p => p.type === 'paid' && p.linkedPaymentId === pay.id)
@@ -3186,7 +3190,7 @@
           <div class="attachment-row" style="border-top:1px dashed var(--line);">
             ${payLog.map((r, idx) => `
               <span class="paylog-row">
-                ${r.date || '—'} ・ <span class="paylog-amt">NT$ ${Number(r.amount||0).toLocaleString()}</span>${r.note ? '（' + escapeHTML(r.note) + '）' : ''}
+                ${r.date || '—'} ・ <span class="paylog-amt">${fmtMoney(r.amount, cur)}</span>${r.note ? '（' + escapeHTML(r.note) + '）' : ''}
                 <button class="del-btn" onclick="deletePaymentRecord('${pay.id}', ${idx})" title="刪除這筆付款紀錄">✕</button>
               </span>
             `).join('')}
@@ -3228,6 +3232,7 @@
     editingPaymentId = paymentId || null;
     const pay = paymentId ? payments.find(x => x.id === paymentId) : null;
     document.getElementById('np2-name').value = pay ? pay.item : '';
+    document.getElementById('np2-currency').value = pay ? curOf(pay) : 'TWD';
     document.getElementById('np2-amount').value = pay ? pay.amount : '';
     document.getElementById('np2-payee').value = pay ? pay.payee : '';
     document.getElementById('np2-due').value = pay ? pay.dueDate : '';
@@ -3242,7 +3247,7 @@
     const amount = document.getElementById('np2-amount').value;
     if(!item || !amount){ alert('請至少填寫項目名稱與金額'); return; }
     const data = {
-      item, amount: Number(amount),
+      item, amount: Number(amount), currency: document.getElementById('np2-currency').value || 'TWD',
       payee: document.getElementById('np2-payee').value.trim(),
       dueDate: document.getElementById('np2-due').value,
       projectId: document.getElementById('np2-project').value || '',
@@ -3254,8 +3259,12 @@
       const paidAmt = pay ? getPaidAmount(pay) : 0;
       data.status = paidAmt <= 0 ? 'unpaid' : (paidAmt >= Number(data.amount||0) ? 'paid' : 'partial');
       if(data.status !== 'paid') data.paidDate = '';
+      const trackP = projects.find(x => x.type === 'paid' && x.linkedPaymentId === editingPaymentId);
       db.collection('payments').doc(editingPaymentId).update(data)
-        .then(() => { closeModal('modal-new-payment'); editingPaymentId = null; }).catch(err => alert('儲存失敗:' + err.message));
+        .then(() => {
+          if(trackP) db.collection('projects').doc(trackP.id).update({ amount: data.amount, currency: data.currency, payee: data.payee }).catch(err => console.error('同步追蹤專案失敗', err));
+          closeModal('modal-new-payment'); editingPaymentId = null;
+        }).catch(err => alert('儲存失敗:' + err.message));
     } else {
       data.status = 'unpaid'; data.paidDate = ''; data.payLog = [];
       db.collection('payments').add(data)
@@ -3302,7 +3311,8 @@
     if(!pay) return;
     const existing = projects.find(p => p.type === 'paid' && p.linkedPaymentId === paymentId);
     const remaining = Math.max(total - totalPaid, 0);
-    const noteLine = `付款 NT$ ${amountThisTime.toLocaleString()},累計已付 NT$ ${totalPaid.toLocaleString()} / 總額 NT$ ${total.toLocaleString()}${remaining > 0 ? '(尚欠 NT$ ' + remaining.toLocaleString() + ')' : '(已付清)'}`;
+    const cc = curOf(pay);
+    const noteLine = `付款 ${fmtMoney(amountThisTime, cc)},累計已付 ${fmtMoney(totalPaid, cc)} / 總額 ${fmtMoney(total, cc)}${remaining > 0 ? '(尚欠 ' + fmtMoney(remaining, cc) + ')' : '(已付清)'}`;
     if(!existing){
       createPaidTrackingProject(pay, date, noteLine);
     } else {
@@ -3327,6 +3337,7 @@
       linkedPaymentId: pay.id,
       linkedProjectId: pay.projectId || '',
       amount: pay.amount || 0,
+      currency: curOf(pay),
       payee: pay.payee || '',
       createdAt: new Date().toISOString().slice(0,10),
       completed: false,
@@ -3339,6 +3350,26 @@
   function deletePayment(id){
     if(!confirm('確定要刪除這筆對帳項目嗎?')) return;
     db.collection('payments').doc(id).delete().catch(err => alert('刪除失敗:' + err.message));
+  }
+
+  // ---------- 幣別 ----------
+  const CURRENCIES = { TWD: { sym: 'NT$', name: '台幣' }, USD: { sym: 'US$', name: '美元' }, CNY: { sym: '¥', name: '人民幣' } };
+  const curOf = obj => (obj && CURRENCIES[obj.currency]) ? obj.currency : 'TWD';
+  const fmtMoney = (n, cur) => (CURRENCIES[cur] || CURRENCIES.TWD).sym + ' ' + Number(n||0).toLocaleString();
+  // 依幣別分開加總:回傳 { TWD: n, USD: n, ... },只含有項目的幣別
+  function sumByCur(list, fn){
+    const m = {};
+    list.forEach(x => { const c = curOf(x.pay || x); m[c] = (m[c] || 0) + fn(x); });
+    return m;
+  }
+  function fmtSums(m, sep){
+    const keys = Object.keys(CURRENCIES).filter(c => m[c] !== undefined);
+    if(!keys.length) return fmtMoney(0, 'TWD');
+    return keys.map(c => fmtMoney(m[c], c)).join(sep || ' ・ ');
+  }
+  function projCurrency(p){
+    const pay = payments.find(x => x.id === p.linkedPaymentId);
+    return pay ? curOf(pay) : curOf(p);
   }
 
   // ---------- utils ----------
@@ -3554,7 +3585,7 @@
     if(p.type === 'paid'){
       const entries = [...(p.progress||[])].sort((a,b) => (a.date||'').localeCompare(b.date||''));
       const metaLine = [
-        p.amount ? '金額:NT$ ' + Number(p.amount).toLocaleString() : '',
+        p.amount ? '金額:' + fmtMoney(p.amount, projCurrency(p)) : '',
         p.payee ? '付款對象:' + escapeHTML(p.payee) : '',
         p.completed ? '狀態:已結案' + (p.completedDate ? '（' + p.completedDate + '）' : '') : '狀態:進行中'
       ].filter(Boolean).join('　');
