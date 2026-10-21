@@ -624,6 +624,8 @@
             <option value="partial">部分付款</option>
             <option value="paid">已付款</option>
           </select>
+          <button class="ghost-btn" onclick="exportPaymentsWord()">匯出對帳清單 Word</button>
+          <button class="ghost-btn" onclick="exportPaymentsPDF()">匯出對帳清單 PDF</button>
         </div>
         <div id="payment-list"></div>
       </div>
@@ -3039,6 +3041,75 @@
     if(paid <= 0) return 'unpaid';
     if(paid >= total) return 'paid';
     return 'partial';
+  }
+  // ---------- 對帳清單匯出(未付清 / 已付清 兩段,每筆帶餘額歷程) ----------
+  function getFilteredPayments(){
+    const projFilter = document.getElementById('pf-project').value || 'all';
+    const statusFilter = document.getElementById('pf-status').value || 'all';
+    return payments.filter(pay => {
+      if(projFilter === 'none' && pay.projectId) return false;
+      if(projFilter !== 'all' && projFilter !== 'none' && pay.projectId !== projFilter) return false;
+      if(statusFilter !== 'all' && getPayStatus(pay) !== statusFilter) return false;
+      return true;
+    });
+  }
+  function getPayLedger(pay){
+    // 回傳每次付款與付款後餘額;舊資料(沒有付款紀錄但已付款)補一列全額付款
+    const total = Number(pay.amount || 0);
+    let log = (pay.payLog || []).map(r => ({ date: r.date || '', amount: Number(r.amount || 0), note: r.note || '' }));
+    if(!log.length && pay.status === 'paid' && total > 0) log = [{ date: pay.paidDate || '', amount: total, note: '(舊資料)全額付款' }];
+    log.sort((a,b) => (a.date||'').localeCompare(b.date||''));
+    let bal = total;
+    const rows = log.map(r => { bal -= r.amount; return { ...r, balance: bal }; });
+    return { total, rows, remaining: Math.max(total - log.reduce((s,r) => s + r.amount, 0), 0) };
+  }
+  function buildPaymentsReportHTML(){
+    const list = getFilteredPayments();
+    const today = new Date().toISOString().slice(0,10);
+    const projSel = document.getElementById('pf-project'), stSel = document.getElementById('pf-status');
+    const scope = (projSel.selectedOptions[0] ? projSel.selectedOptions[0].textContent : '全部專案') + ' / ' + (stSel.selectedOptions[0] ? stSel.selectedOptions[0].textContent : '全部狀態');
+    const money = n => 'NT$ ' + Number(n||0).toLocaleString();
+    const TD = 'border:1px solid #ccc;padding:5px 8px;font-size:11.5px;vertical-align:top;';
+    const TH = 'background:#f3f3f3;font-weight:600;border:1px solid #ccc;padding:5px 8px;font-size:11.5px;';
+    const withLedger = list.map(pay => ({ pay, led: getPayLedger(pay), status: getPayStatus(pay) }));
+    const unpaid = withLedger.filter(x => x.status !== 'paid').sort((a,b) => (a.pay.dueDate || '9999').localeCompare(b.pay.dueDate || '9999'));
+    const paid = withLedger.filter(x => x.status === 'paid').sort((a,b) => (a.pay.paidDate || '').localeCompare(b.pay.paidDate || ''));
+    const sumRemain = unpaid.reduce((s,x) => s + x.led.remaining, 0);
+    const sumPaidAll = withLedger.reduce((s,x) => s + (x.led.total - x.led.remaining), 0);
+    const sumPaidDone = paid.reduce((s,x) => s + x.led.total, 0);
+    const block = ({ pay, led, status }) => {
+      const proj = projects.find(p => p.id === pay.projectId);
+      const overdue = status !== 'paid' && pay.dueDate && pay.dueDate < today;
+      const label = status === 'paid' ? '已付清' : status === 'partial' ? '部分付款' : '未付款';
+      const rows = [`<tr><td style="${TD}">—</td><td style="${TD}">應付總額</td><td style="${TD}text-align:right;"></td><td style="${TD}text-align:right;">${money(led.total)}</td></tr>`]
+        .concat(led.rows.map(r => `<tr><td style="${TD}white-space:nowrap;">${r.date || '—'}</td><td style="${TD}">付款${r.note ? '(' + escapeHTML(r.note) + ')' : ''}</td><td style="${TD}text-align:right;">− ${money(r.amount)}</td><td style="${TD}text-align:right;${r.balance <= 0 ? 'color:#3F6B4A;' : ''}">${money(Math.max(r.balance,0))}</td></tr>`)).join('');
+      return `<div style="margin:0 0 18px;page-break-inside:avoid;">
+        <div style="font-size:13px;font-weight:700;margin:10px 0 3px;">${escapeHTML(pay.item || '')} <span style="font-weight:400;font-size:11px;color:${status === 'paid' ? '#3F6B4A' : (overdue ? '#B5543F' : '#8A6A1F')};">【${label}${overdue ? '・已逾期' : ''}】</span></div>
+        <div style="font-size:11px;color:#777;margin-bottom:5px;">付款對象:${escapeHTML(pay.payee || '—')} ・ ${proj ? '專案:' + escapeHTML(proj.name) : '未指定專案'} ・ 到期日:${pay.dueDate || '—'}${status === 'paid' && pay.paidDate ? ' ・ 付清日:' + pay.paidDate : ''}${pay.note ? ' ・ 備註:' + escapeHTML(pay.note) : ''}</div>
+        <table style="width:100%;border-collapse:collapse;"><tr><td style="${TH}width:90px;">日期</td><td style="${TH}">項目</td><td style="${TH}text-align:right;width:120px;">金額</td><td style="${TH}text-align:right;width:130px;">付款後餘額</td></tr>${rows}
+        <tr><td colspan="3" style="${TD}font-weight:700;background:#fafafa;">目前餘額</td><td style="${TD}text-align:right;font-weight:700;background:#fafafa;${led.remaining > 0 ? 'color:#B5543F;' : 'color:#3F6B4A;'}">${money(led.remaining)}</td></tr></table></div>`;
+    };
+    const section = (title, arr, subLabel, subValue) => arr.length ? `<h2 style="font-size:16px;margin:22px 0 4px;border-bottom:2px solid #6E8894;padding-bottom:4px;">${title}(${arr.length} 筆)</h2>
+      <p style="font-size:12px;margin:4px 0 8px;color:#555;">${subLabel}:<strong>${money(subValue)}</strong></p>${arr.map(block).join('')}` : '';
+    return `<div style="font-family:'Noto Serif TC', serif, sans-serif;color:#333;padding:8px;">
+      <div style="font-family:Georgia,'Noto Serif TC',serif;font-size:18px;letter-spacing:6px;color:#6E8894;margin-bottom:10px;">CHUANHO</div>
+      <h1 style="font-size:22px;margin:0 0 4px;">對帳清單</h1>
+      <p style="font-size:12px;color:#888;margin:0 0 14px;">範圍:${escapeHTML(scope)} · 產生於 ${new Date().toLocaleString('zh-TW')}</p>
+      <table style="border-collapse:collapse;width:100%;margin-bottom:6px;"><tr>
+        <td style="${TH}">尚欠總額</td><td style="${TH}">已付款總額</td><td style="${TH}">未付清筆數</td><td style="${TH}">已付清筆數</td></tr><tr>
+        <td style="${TD}font-weight:700;color:#B5543F;">${money(sumRemain)}</td><td style="${TD}font-weight:700;color:#3F6B4A;">${money(sumPaidAll)}</td><td style="${TD}">${unpaid.length}</td><td style="${TD}">${paid.length}</td></tr></table>
+      ${section('未付清(含部分付款)', unpaid, '尚欠小計', sumRemain)}
+      ${section('已付清', paid, '已付清小計', sumPaidDone)}
+      ${list.length ? '' : '<p style="font-size:12px;color:#999;">沒有符合條件的項目。</p>'}
+    </div>`;
+  }
+  function exportPaymentsPDF(){ openPrintWindow('對帳清單', buildPaymentsReportHTML()); }
+  function exportPaymentsWord(){
+    const header = "<html xmlns:o='urn:schemas-microsoft-com:office:office' xmlns:w='urn:schemas-microsoft-com:office:word' xmlns='http://www.w3.org/TR/REC-html40'><head><meta charset='utf-8'><title>對帳清單</title></head><body>";
+    const blob = new Blob(['﻿', header + buildPaymentsReportHTML() + '</body></html>'], { type: 'application/msword' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a'); a.href = url; a.download = '對帳清單-' + new Date().toISOString().slice(0,10) + '.doc'; a.click();
+    URL.revokeObjectURL(url);
   }
   function renderPayments(){
     populateProjectSelect('pf-project', true);
